@@ -2,6 +2,7 @@ package com.example.habittracker.notifications
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.os.Build
 import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -47,11 +48,37 @@ class ReminderScheduler @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            target.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            pendingIntent
-        )
+        val triggerAtMillis = target.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        try {
+            val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+
+            if (canUseExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                // Graceful fallback on Android 12+ when exact-alarm permission is not granted.
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        } catch (_: SecurityException) {
+            // Final fallback if OEM/OS throws despite capability checks.
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
     }
 
     fun cancelAll() {

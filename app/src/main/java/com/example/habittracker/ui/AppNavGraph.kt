@@ -3,10 +3,10 @@ package com.example.habittracker.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -22,7 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.habittracker.ui.screens.GoalsScreen
 import com.example.habittracker.ui.screens.MainScreen
-import com.example.habittracker.ui.screens.RemindersScreen
+import com.example.habittracker.ui.screens.MotivationScreen
 import com.example.habittracker.ui.screens.TasksScreen
 import com.example.habittracker.ui.screens.WhoAmIScreen
 
@@ -35,10 +35,10 @@ data class BottomRoute(
 object Routes {
     val Home = BottomRoute("home", "Home", Icons.Default.Home)
     val WhoAmI = BottomRoute("who_am_i", "Who am I?", Icons.Default.Person)
+    val Motivation = BottomRoute("motivational", "Motivation", Icons.Default.Star)
     val Tasks = BottomRoute("tasks", "Tasks", Icons.AutoMirrored.Filled.List)
     val Goals = BottomRoute("goals", "Goals", Icons.Default.Flag)
-    val Reminders = BottomRoute("reminders", "Reminders", Icons.Default.Alarm)
-    val BottomItems = listOf(Home, WhoAmI, Tasks, Goals, Reminders)
+    val BottomItems = listOf(Home, WhoAmI, Motivation, Tasks, Goals)
 }
 
 @Composable
@@ -76,9 +76,9 @@ fun AppNavGraph() {
         ) {
             composable(Routes.Home.route) { MainScreen() }
             composable(Routes.WhoAmI.route) { WhoAmIScreen() }
+            composable(Routes.Motivation.route) { MotivationScreen() }
             composable(Routes.Tasks.route) { TasksScreen() }
             composable(Routes.Goals.route) { GoalsScreen() }
-            composable(Routes.Reminders.route) { RemindersScreen() }
         }
     }
 }

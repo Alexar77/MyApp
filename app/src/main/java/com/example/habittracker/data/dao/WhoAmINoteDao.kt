@@ -9,8 +9,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WhoAmINoteDao {
-    @Query("SELECT * FROM who_am_i_notes ORDER BY createdAt DESC")
+    @Query("SELECT * FROM who_am_i_notes ORDER BY sortOrder ASC, createdAt DESC")
     fun observeAll(): Flow<List<WhoAmINote>>
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM who_am_i_notes")
+    suspend fun getMaxSortOrder(): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(note: WhoAmINote): Long
@@ -20,4 +23,7 @@ interface WhoAmINoteDao {
 
     @Query("DELETE FROM who_am_i_notes WHERE id = :noteId")
     suspend fun deleteById(noteId: Long)
+
+    @Query("UPDATE who_am_i_notes SET sortOrder = :sortOrder WHERE id = :noteId")
+    suspend fun updateSortOrder(noteId: Long, sortOrder: Int)
 }

@@ -33,7 +33,7 @@ import com.example.habittracker.data.entity.WhoAmINote
         ReminderSettings::class,
         ReminderTime::class
     ],
-    version = 5,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -7,10 +7,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.habittracker.R
+import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -21,9 +23,18 @@ class ReminderReceiver : BroadcastReceiver() {
     lateinit var scheduler: ReminderScheduler
 
     override fun onReceive(context: Context, intent: Intent) {
+        val uniqueKey = intent.getStringExtra(EXTRA_UNIQUE_KEY) ?: return
         val timeValue = intent.getStringExtra(EXTRA_TIME) ?: return
-        val habitsEnabled = intent.getBooleanExtra(EXTRA_HABITS, true)
-        val tasksEnabled = intent.getBooleanExtra(EXTRA_TASKS, true)
+        val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Reminder" }
+        val message = intent.getStringExtra(EXTRA_MESSAGE).orEmpty().ifBlank { "Time to check MyApp" }
+        val skipReschedule = intent.getBooleanExtra(EXTRA_SKIP_RESCHEDULE, false)
+
+        val reminder = HabitRepository.ReminderScheduleItem(
+            uniqueKey = uniqueKey,
+            title = title,
+            message = message,
+            timeValue = timeValue
+        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
@@ -31,7 +42,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
             if (!granted) {
-                scheduler.scheduleAtTime(timeValue, habitsEnabled, tasksEnabled)
+                if (!skipReschedule) scheduler.schedule(reminder)
                 return
             }
         }
@@ -44,30 +55,26 @@ class ReminderReceiver : BroadcastReceiver() {
             )
         }
 
-        val message = when {
-            habitsEnabled && tasksEnabled -> "Time to complete your habits and tasks"
-            habitsEnabled -> "Time to complete your habits"
-            tasksEnabled -> "Time to complete your tasks"
-            else -> "Reminder"
-        }
-
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("MyApp Reminder")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
             .setContentText(message)
+            .setColor(Color.RED)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
 
-        manager.notify(timeValue.hashCode(), notification)
+        manager.notify(uniqueKey.hashCode(), notification)
 
-        scheduler.scheduleAtTime(timeValue, habitsEnabled, tasksEnabled)
+        if (!skipReschedule) scheduler.schedule(reminder)
     }
 
     companion object {
+        const val EXTRA_UNIQUE_KEY = "extra_unique_key"
         const val EXTRA_TIME = "extra_time"
-        const val EXTRA_HABITS = "extra_habits"
-        const val EXTRA_TASKS = "extra_tasks"
+        const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_MESSAGE = "extra_message"
+        const val EXTRA_SKIP_RESCHEDULE = "extra_skip_reschedule"
         const val CHANNEL_ID = "daily_reminders"
     }
 }

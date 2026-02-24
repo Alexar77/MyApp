@@ -75,4 +75,21 @@ class WhoAmIViewModel @Inject constructor(
             habitRepository.deleteWhoAmINote(note.id)
         }
     }
+
+    fun moveNote(noteId: Long, direction: Int) {
+        val sourceList = mutableUiState.value.notes
+        val fromIndex = sourceList.indexOfFirst { it.id == noteId }
+        if (fromIndex == -1) return
+
+        val toIndex = (fromIndex + direction).coerceIn(0, sourceList.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reordered = sourceList.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+
+        viewModelScope.launch {
+            habitRepository.reorderWhoAmINotes(reordered.map { it.id })
+        }
+    }
 }

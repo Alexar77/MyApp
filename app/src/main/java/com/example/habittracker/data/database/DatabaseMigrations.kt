@@ -106,5 +106,84 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `reminderEnabled` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `reminderTime` TEXT")
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `reminderEnabled` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `reminderTime` TEXT")
+        }
+    }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `reminderMessage` TEXT")
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `reminderMessage` TEXT")
+        }
+    }
+
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `goals` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `who_am_i_notes` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+
+            db.execSQL(
+                """
+                UPDATE `tasks`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `tasks` t2
+                    WHERE t2.`isDone` = `tasks`.`isDone`
+                      AND (t2.`createdAt` > `tasks`.`createdAt`
+                           OR (t2.`createdAt` = `tasks`.`createdAt` AND t2.`id` > `tasks`.`id`))
+                )
+                """.trimIndent()
+            )
+
+            db.execSQL(
+                """
+                UPDATE `goals`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `goals` g2
+                    WHERE g2.`isDone` = `goals`.`isDone`
+                      AND (g2.`createdAt` > `goals`.`createdAt`
+                           OR (g2.`createdAt` = `goals`.`createdAt` AND g2.`id` > `goals`.`id`))
+                )
+                """.trimIndent()
+            )
+
+            db.execSQL(
+                """
+                UPDATE `who_am_i_notes`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `who_am_i_notes` n2
+                    WHERE n2.`createdAt` > `who_am_i_notes`.`createdAt`
+                      OR (n2.`createdAt` = `who_am_i_notes`.`createdAt` AND n2.`id` > `who_am_i_notes`.`id`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `frequencyType` TEXT NOT NULL DEFAULT 'DAILY'")
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `frequencyIntervalDays` INTEGER")
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `frequencyWeekdays` TEXT")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        MIGRATION_7_8,
+        MIGRATION_8_9
+    )
 }

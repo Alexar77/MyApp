@@ -87,4 +87,21 @@ class GoalsViewModel @Inject constructor(
     fun deleteSubGoal(subGoal: SubGoalUiItem) {
         viewModelScope.launch { repository.deleteSubGoal(subGoal.id) }
     }
+
+    fun moveGoal(goalId: Long, isDone: Boolean, direction: Int) {
+        val sourceList = mutableUiState.value.goals.filter { it.isDone == isDone }
+        val fromIndex = sourceList.indexOfFirst { it.id == goalId }
+        if (fromIndex == -1) return
+
+        val toIndex = (fromIndex + direction).coerceIn(0, sourceList.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reordered = sourceList.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+
+        viewModelScope.launch {
+            repository.reorderGoalsForDoneState(reordered.map { it.id })
+        }
+    }
 }

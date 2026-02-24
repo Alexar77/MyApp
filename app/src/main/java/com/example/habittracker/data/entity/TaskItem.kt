@@ -8,5 +8,9 @@ data class TaskItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val isDone: Boolean,
-    val createdAt: Long
+    val sortOrder: Int = 0,
+    val createdAt: Long,
+    val reminderEnabled: Boolean = false,
+    val reminderTime: String? = null,
+    val reminderMessage: String? = null
 )

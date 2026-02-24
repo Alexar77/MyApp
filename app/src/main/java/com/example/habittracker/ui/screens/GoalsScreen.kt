@@ -1,7 +1,11 @@
 package com.example.habittracker.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -25,6 +30,7 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -35,6 +41,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +53,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -70,6 +80,7 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
 
     var goalPendingDelete by remember { mutableStateOf<GoalUiItem?>(null) }
     var subGoalPendingDelete by remember { mutableStateOf<SubGoalUiItem?>(null) }
+    var draggingGoalId by remember { mutableStateOf<Long?>(null) }
 
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
     val pullRefreshState = rememberPullRefreshState(
@@ -97,10 +108,14 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                 .padding(innerPadding)
                 .pullRefresh(pullRefreshState)
         ) {
+            val goalsToAchieve = state.goals.filter { !it.isDone }
+            val goalsAchieved = state.goals.filter { it.isDone }
+
             if (state.goals.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -114,24 +129,94 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(state.goals, key = { it.id }) { goal ->
-                        val expanded = expandedGoalIds.contains(goal.id)
-                        GoalCard(
-                            goal = goal,
-                            expanded = expanded,
-                            onToggleGoalDone = { viewModel.toggleGoal(goal) },
-                            onToggleExpanded = {
-                                expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
-                            },
-                            onAddSubGoal = {
-                                selectedGoalIdForSubGoal = goal.id
-                                subGoalInput = ""
-                                isSubGoalDialogVisible = true
-                            },
-                            onDeleteGoal = { goalPendingDelete = goal },
-                            onToggleSubGoal = viewModel::toggleSubGoal,
-                            onDeleteSubGoal = { subGoalPendingDelete = it }
+                    item {
+                        Text(
+                            text = "Goals to achieve",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    if (goalsToAchieve.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No goals to achieve right now",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(goalsToAchieve, key = { it.id }) { goal ->
+                            val expanded = expandedGoalIds.contains(goal.id)
+                            GoalCard(
+                                modifier = Modifier,
+                                goal = goal,
+                                expanded = expanded,
+                                isDragging = draggingGoalId == goal.id,
+                                onToggleGoalDone = { viewModel.toggleGoal(goal) },
+                                onToggleExpanded = {
+                                    expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
+                                },
+                                onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
+                                onDragStart = { draggingGoalId = goal.id },
+                                onDragEnd = { draggingGoalId = null },
+                                onAddSubGoal = {
+                                    selectedGoalIdForSubGoal = goal.id
+                                    subGoalInput = ""
+                                    isSubGoalDialogVisible = true
+                                },
+                                onDeleteGoal = { goalPendingDelete = goal },
+                                onToggleSubGoal = viewModel::toggleSubGoal,
+                                onDeleteSubGoal = { subGoalPendingDelete = it }
+                            )
+                        }
+                    }
+
+                    item {
+                        Text(
+                            text = "Goals achieved",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    item {
+                        Text(
+                            text = "Look what you have achieved untill now keep going you got this",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (goalsAchieved.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No achieved goals yet",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(goalsAchieved, key = { it.id }) { goal ->
+                            val expanded = expandedGoalIds.contains(goal.id)
+                            GoalCard(
+                                modifier = Modifier,
+                                goal = goal,
+                                expanded = expanded,
+                                isDragging = draggingGoalId == goal.id,
+                                onToggleGoalDone = { viewModel.toggleGoal(goal) },
+                                onToggleExpanded = {
+                                    expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
+                                },
+                                onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
+                                onDragStart = { draggingGoalId = goal.id },
+                                onDragEnd = { draggingGoalId = null },
+                                onAddSubGoal = {
+                                    selectedGoalIdForSubGoal = goal.id
+                                    subGoalInput = ""
+                                    isSubGoalDialogVisible = true
+                                },
+                                onDeleteGoal = { goalPendingDelete = goal },
+                                onToggleSubGoal = viewModel::toggleSubGoal,
+                                onDeleteSubGoal = { subGoalPendingDelete = it }
+                            )
+                        }
                     }
                 }
             }
@@ -246,16 +331,68 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
 
 @Composable
 private fun GoalCard(
+    modifier: Modifier = Modifier,
     goal: GoalUiItem,
     expanded: Boolean,
+    isDragging: Boolean,
     onToggleGoalDone: () -> Unit,
     onToggleExpanded: () -> Unit,
+    onMove: (Int) -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
     onAddSubGoal: () -> Unit,
     onDeleteGoal: () -> Unit,
     onToggleSubGoal: (SubGoalUiItem) -> Unit,
     onDeleteSubGoal: (SubGoalUiItem) -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    var dragY = 0f
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isDragging) 1.02f else 1f,
+        animationSpec = spring()
+    )
+    val dragContainerColor by animateColorAsState(
+        targetValue = if (isDragging) {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+    )
+    Card(
+        colors = CardDefaults.cardColors(containerColor = dragContainerColor),
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = animatedScale
+                scaleY = animatedScale
+            }
+            .pointerInput(goal.id) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { onDragStart() },
+                    onDragEnd = {
+                        dragY = 0f
+                        onDragEnd()
+                    },
+                    onDragCancel = {
+                        dragY = 0f
+                        onDragEnd()
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragY += dragAmount.y
+                        when {
+                            dragY > 28f -> {
+                                onMove(1)
+                                dragY = 0f
+                            }
+                            dragY < -28f -> {
+                                onMove(-1)
+                                dragY = 0f
+                            }
+                        }
+                    }
+                )
+            }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -270,7 +407,9 @@ private fun GoalCard(
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onToggleGoalDone() },
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onToggleGoalDone() }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -319,7 +458,14 @@ private fun GoalCard(
                                 .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { onToggleSubGoal(subGoal) }) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onToggleSubGoal(subGoal) }
+                                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 if (subGoal.isDone) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
                                 } else {
@@ -328,17 +474,19 @@ private fun GoalCard(
                                         contentDescription = "Mark as done"
                                     )
                                 }
+                                Text(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 10.dp),
+                                    text = subGoal.title,
+                                    textDecoration = if (subGoal.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                                    color = if (subGoal.isDone) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    }
+                                )
                             }
-                            Text(
-                                modifier = Modifier.weight(1f),
-                                text = subGoal.title,
-                                textDecoration = if (subGoal.isDone) TextDecoration.LineThrough else TextDecoration.None,
-                                color = if (subGoal.isDone) {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                }
-                            )
                             IconButton(onClick = { onDeleteSubGoal(subGoal) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Delete subgoal")
                             }

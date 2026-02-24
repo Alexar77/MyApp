@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
@@ -27,7 +28,10 @@ import java.time.YearMonth
 fun MonthCalendar(
     month: YearMonth,
     completedDates: Set<String>,
+    scheduledDates: Set<String>,
     noteDates: Set<String>,
+    createdDate: LocalDate?,
+    todayDate: LocalDate,
     onToggleDate: (String) -> Unit,
     onOpenDayNote: (String) -> Unit
 ) {
@@ -60,9 +64,19 @@ fun MonthCalendar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 week.forEach { date ->
+                    val isScheduled = date?.toString() in scheduledDates
+                    val isCompleted = isScheduled && date?.toString() in completedDates
+                    val isWithinTrackRange = date != null && isScheduled
+                    val isMissed = date != null &&
+                        isScheduled &&
+                        !date.isAfter(todayDate) &&
+                        !isCompleted
+
                     CalendarDayCell(
                         date = date,
-                        completed = date?.toString() in completedDates,
+                        completed = isCompleted,
+                        missed = isMissed,
+                        enabled = isWithinTrackRange,
                         hasNote = date?.toString() in noteDates,
                         onToggleDate = onToggleDate,
                         onOpenDayNote = onOpenDayNote,
@@ -79,6 +93,8 @@ fun MonthCalendar(
 private fun CalendarDayCell(
     date: LocalDate?,
     completed: Boolean,
+    missed: Boolean,
+    enabled: Boolean,
     hasNote: Boolean,
     onToggleDate: (String) -> Unit,
     onOpenDayNote: (String) -> Unit,
@@ -89,10 +105,28 @@ private fun CalendarDayCell(
         return
     }
 
-    val bgColor = if (completed) {
-        MaterialTheme.colorScheme.primaryContainer
+    val completedBackground = Color(0xFF1B5E20)
+    val completedMarker = Color(0xFF69F0AE)
+
+    val bgColor = when {
+        completed -> completedBackground
+        missed -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val dayColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    }
+    val markerText = when {
+        completed -> "✓"
+        missed -> "✕"
+        else -> ""
+    }
+    val markerColor = when {
+        completed -> completedMarker
+        missed -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Box(
@@ -101,6 +135,7 @@ private fun CalendarDayCell(
             .clip(RoundedCornerShape(10.dp))
             .background(bgColor)
             .combinedClickable(
+                enabled = enabled,
                 onClick = { onToggleDate(date.toString()) },
                 onLongClick = { onOpenDayNote(date.toString()) }
             )
@@ -123,12 +158,13 @@ private fun CalendarDayCell(
             Text(
                 text = date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = dayColor
             )
             Text(
-                text = if (completed) "✓" else "",
+                text = markerText,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
+                color = markerColor
             )
         }
     }

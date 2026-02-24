@@ -6,8 +6,6 @@ import com.example.habittracker.data.dao.GoalDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
-import com.example.habittracker.data.dao.ReminderSettingsDao
-import com.example.habittracker.data.dao.ReminderTimeDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
@@ -39,8 +37,6 @@ object AppModule {
     @Provides fun provideTaskDao(database: AppDatabase): TaskDao = database.taskDao()
     @Provides fun provideGoalDao(database: AppDatabase): GoalDao = database.goalDao()
     @Provides fun provideSubGoalDao(database: AppDatabase): SubGoalDao = database.subGoalDao()
-    @Provides fun provideReminderSettingsDao(database: AppDatabase): ReminderSettingsDao = database.reminderSettingsDao()
-    @Provides fun provideReminderTimeDao(database: AppDatabase): ReminderTimeDao = database.reminderTimeDao()
 
     @Provides
     @Singleton
@@ -51,9 +47,7 @@ object AppModule {
         whoAmINoteDao: WhoAmINoteDao,
         taskDao: TaskDao,
         goalDao: GoalDao,
-        subGoalDao: SubGoalDao,
-        reminderSettingsDao: ReminderSettingsDao,
-        reminderTimeDao: ReminderTimeDao
+        subGoalDao: SubGoalDao
     ): HabitRepository {
         return HabitRepository(
             habitDao = habitDao,
@@ -62,9 +56,7 @@ object AppModule {
             whoAmINoteDao = whoAmINoteDao,
             taskDao = taskDao,
             goalDao = goalDao,
-            subGoalDao = subGoalDao,
-            reminderSettingsDao = reminderSettingsDao,
-            reminderTimeDao = reminderTimeDao
+            subGoalDao = subGoalDao
         )
     }
 }

@@ -9,8 +9,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GoalDao {
-    @Query("SELECT * FROM goals ORDER BY createdAt DESC")
+    @Query("SELECT * FROM goals ORDER BY isDone ASC, sortOrder ASC, createdAt DESC")
     fun observeAll(): Flow<List<Goal>>
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM goals WHERE isDone = :isDone")
+    suspend fun getMaxSortOrderForDoneState(isDone: Boolean): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(goal: Goal)
@@ -20,4 +23,7 @@ interface GoalDao {
 
     @Query("DELETE FROM goals WHERE id = :goalId")
     suspend fun deleteById(goalId: Long)
+
+    @Query("UPDATE goals SET sortOrder = :sortOrder WHERE id = :goalId")
+    suspend fun updateSortOrder(goalId: Long, sortOrder: Int)
 }

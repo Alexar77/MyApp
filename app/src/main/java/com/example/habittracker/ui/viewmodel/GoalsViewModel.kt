@@ -14,13 +14,15 @@ import kotlinx.coroutines.launch
 data class SubGoalUiItem(
     val id: Long,
     val title: String,
-    val isDone: Boolean
+    val isDone: Boolean,
+    val completedAt: Long?
 )
 
 data class GoalUiItem(
     val id: Long,
     val title: String,
     val isDone: Boolean,
+    val completedAt: Long?,
     val subGoals: List<SubGoalUiItem>
 )
 
@@ -45,11 +47,13 @@ class GoalsViewModel @Inject constructor(
                                 id = goal.goalId,
                                 title = goal.title,
                                 isDone = goal.isDone,
+                                completedAt = goal.completedAt,
                                 subGoals = goal.subGoals.map { subGoal ->
                                     SubGoalUiItem(
                                         id = subGoal.id,
                                         title = subGoal.title,
-                                        isDone = subGoal.isDone
+                                        isDone = subGoal.isDone,
+                                        completedAt = subGoal.completedAt
                                     )
                                 }
                             )
@@ -76,6 +80,10 @@ class GoalsViewModel @Inject constructor(
         viewModelScope.launch { repository.deleteGoal(goal.id) }
     }
 
+    fun renameGoal(goal: GoalUiItem, title: String) {
+        viewModelScope.launch { repository.renameGoal(goal.id, title) }
+    }
+
     fun addSubGoal(goalId: Long, title: String) {
         viewModelScope.launch { repository.addSubGoal(goalId, title) }
     }
@@ -86,6 +94,10 @@ class GoalsViewModel @Inject constructor(
 
     fun deleteSubGoal(subGoal: SubGoalUiItem) {
         viewModelScope.launch { repository.deleteSubGoal(subGoal.id) }
+    }
+
+    fun renameSubGoal(subGoal: SubGoalUiItem, title: String) {
+        viewModelScope.launch { repository.renameSubGoal(subGoal.id, title) }
     }
 
     fun moveGoal(goalId: Long, isDone: Boolean, direction: Int) {

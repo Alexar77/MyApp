@@ -1,6 +1,7 @@
 package com.example.habittracker.repository
 
 import com.example.habittracker.data.dao.GoalDao
+import com.example.habittracker.data.dao.BirthdayDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -8,6 +9,7 @@ import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
+import com.example.habittracker.data.entity.Birthday
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
@@ -18,6 +20,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -33,8 +36,13 @@ class HabitRepository @Inject constructor(
     private val whoAmINoteDao: WhoAmINoteDao,
     private val taskDao: TaskDao,
     private val goalDao: GoalDao,
-    private val subGoalDao: SubGoalDao
+    private val subGoalDao: SubGoalDao,
+    private val birthdayDao: BirthdayDao
 ) {
+    companion object {
+        const val DEFAULT_TASK_CATEGORY = "General"
+    }
+
     enum class HabitFrequencyType { DAILY, WEEKLY, EVERY_N_DAYS }
 
     data class HabitOption(
@@ -50,13 +58,29 @@ class HabitRepository @Inject constructor(
     )
 
     data class HabitStats(val currentStreak: Int, val longestStreak: Int, val totalCompletions: Int)
-    data class GoalWithSubGoals(val goalId: Long, val title: String, val isDone: Boolean, val subGoals: List<SubGoal>)
+    data class GoalWithSubGoals(
+        val goalId: Long,
+        val title: String,
+        val isDone: Boolean,
+        val completedAt: Long?,
+        val subGoals: List<SubGoal>
+    )
 
     data class ReminderScheduleItem(
         val uniqueKey: String,
         val title: String,
         val message: String,
-        val timeValue: String
+        val timeValue: String,
+        val triggerAtMillis: Long? = null
+    )
+
+    data class BirthdayOption(
+        val id: Long,
+        val name: String,
+        val year: Int,
+        val month: Int,
+        val day: Int,
+        val reminderDateTimesCsv: String?
     )
 
     fun observeHabits(): Flow<List<HabitOption>> = habitDao.observeHabits().map { habits ->
@@ -120,6 +144,8 @@ class HabitRepository @Inject constructor(
             notes.associate { it.date to it.note }
         }
 
+    fun observeAllHabitDayNotes(): Flow<List<HabitDayNote>> = habitDayNoteDao.observeAllNotes()
+
     fun observeWhoAmINotes(): Flow<List<WhoAmINote>> = whoAmINoteDao.observeAll()
     fun observeTasks(): Flow<List<TaskItem>> = taskDao.observeAll()
 
@@ -130,20 +156,36 @@ class HabitRepository @Inject constructor(
                     goalId = goal.id,
                     title = goal.title,
                     isDone = goal.isDone,
+                    completedAt = goal.completedAt,
                     subGoals = subGoals.filter { it.goalId == goal.id }
                 )
             }
         }
 
     fun observeReminderScheduleItems(): Flow<List<ReminderScheduleItem>> =
-        combine(habitDao.observeHabits(), taskDao.observeAll()) { habits, tasks ->
-            buildScheduleItems(habits, tasks)
+        combine(habitDao.observeHabits(), taskDao.observeAll(), birthdayDao.observeAll()) { habits, tasks, birthdays ->
+            buildScheduleItems(habits, tasks, birthdays)
+        }
+
+    fun observeBirthdays(): Flow<List<BirthdayOption>> =
+        birthdayDao.observeAll().map { birthdays ->
+            birthdays.map {
+                BirthdayOption(
+                    id = it.id,
+                    name = it.name,
+                    year = it.year,
+                    month = it.month,
+                    day = it.day,
+                    reminderDateTimesCsv = it.reminderDateTimesCsv
+                )
+            }
         }
 
     suspend fun getReminderScheduleItems(): List<ReminderScheduleItem> {
         val habits = habitDao.getAllHabits()
         val tasks = taskDao.getAll()
-        return buildScheduleItems(habits, tasks)
+        val birthdays = birthdayDao.getAll()
+        return buildScheduleItems(habits, tasks, birthdays)
     }
 
     fun observeHabit(habitId: Long): Flow<Habit?> = habitDao.observeHabit(habitId)
@@ -174,8 +216,12 @@ class HabitRepository @Inject constructor(
         val sanitized = name.trim()
         if (sanitized.isEmpty()) return
 
-        if (reminderEnabled && !isValidTime(reminderTime.orEmpty())) return
-        val normalizedReminderTime = if (reminderEnabled) reminderTime?.trim() else null
+        if (reminderEnabled && !isValidReminderTimesCsv(reminderTime)) return
+        val normalizedReminderTime = if (reminderEnabled) {
+            parseReminderTimesCsv(reminderTime).joinToString(",").takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
         val normalizedReminderMessage = reminderMessage?.trim()?.takeIf { it.isNotEmpty() }
         val normalizedFrequencyType = parseFrequencyType(frequencyTypeValue).name
         val normalizedFrequencyInterval = normalizeFrequencyInterval(normalizedFrequencyType, frequencyIntervalDays)
@@ -208,8 +254,12 @@ class HabitRepository @Inject constructor(
     ) {
         val sanitized = name.trim()
         if (sanitized.isEmpty()) return
-        if (reminderEnabled && !isValidTime(reminderTime.orEmpty())) return
-        val normalizedReminderTime = if (reminderEnabled) reminderTime?.trim() else null
+        if (reminderEnabled && !isValidReminderTimesCsv(reminderTime)) return
+        val normalizedReminderTime = if (reminderEnabled) {
+            parseReminderTimesCsv(reminderTime).joinToString(",").takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
         val normalizedReminderMessage = reminderMessage?.trim()?.takeIf { it.isNotEmpty() }
         val normalizedFrequencyType = parseFrequencyType(frequencyTypeValue).name
         val normalizedFrequencyInterval = normalizeFrequencyInterval(normalizedFrequencyType, frequencyIntervalDays)
@@ -264,6 +314,12 @@ class HabitRepository @Inject constructor(
     }
 
     suspend fun updateWhoAmINoteContent(noteId: Long, content: String) = whoAmINoteDao.updateContent(noteId, content)
+    suspend fun renameWhoAmINote(noteId: Long, title: String) {
+        val sanitized = title.trim()
+        if (sanitized.isEmpty()) return
+        whoAmINoteDao.updateTitle(noteId, sanitized)
+    }
+
     suspend fun deleteWhoAmINote(noteId: Long) = whoAmINoteDao.deleteById(noteId)
     suspend fun reorderWhoAmINotes(orderedNoteIds: List<Long>) {
         orderedNoteIds.forEachIndexed { index, noteId ->
@@ -273,25 +329,35 @@ class HabitRepository @Inject constructor(
 
     suspend fun addTask(
         title: String,
+        category: String = DEFAULT_TASK_CATEGORY,
         reminderEnabled: Boolean = false,
         reminderTime: String? = null,
+        reminderDateTimesCsv: String? = null,
         reminderMessage: String? = null
     ) {
         val sanitized = title.trim()
         if (sanitized.isEmpty()) return
+        val normalizedCategory = category.trim().ifBlank { DEFAULT_TASK_CATEGORY }
 
-        if (reminderEnabled && !isValidTime(reminderTime.orEmpty())) return
+        val normalizedReminderDateTimesCsv = if (reminderEnabled) {
+            normalizeReminderDateTimesCsv(reminderDateTimesCsv)
+        } else {
+            null
+        }
+        if (reminderEnabled && normalizedReminderDateTimesCsv == null && !isValidTime(reminderTime.orEmpty())) return
         val normalizedReminderTime = if (reminderEnabled) reminderTime?.trim() else null
         val normalizedReminderMessage = reminderMessage?.trim()?.takeIf { it.isNotEmpty() }
         val nextSortOrder = taskDao.getMaxSortOrderForDoneState(isDone = false) + 1
         taskDao.insert(
             TaskItem(
                 title = sanitized,
+                category = normalizedCategory,
                 isDone = false,
                 sortOrder = nextSortOrder,
                 createdAt = System.currentTimeMillis(),
                 reminderEnabled = reminderEnabled,
                 reminderTime = normalizedReminderTime,
+                reminderDateTimesCsv = normalizedReminderDateTimesCsv,
                 reminderMessage = normalizedReminderMessage
             )
         )
@@ -300,26 +366,37 @@ class HabitRepository @Inject constructor(
     suspend fun updateTask(
         taskId: Long,
         title: String,
+        category: String,
         reminderEnabled: Boolean,
         reminderTime: String?,
+        reminderDateTimesCsv: String?,
         reminderMessage: String?
     ) {
         val sanitized = title.trim()
         if (sanitized.isEmpty()) return
-        if (reminderEnabled && !isValidTime(reminderTime.orEmpty())) return
+        val normalizedCategory = category.trim().ifBlank { DEFAULT_TASK_CATEGORY }
+        val normalizedReminderDateTimesCsv = if (reminderEnabled) {
+            normalizeReminderDateTimesCsv(reminderDateTimesCsv)
+        } else {
+            null
+        }
+        if (reminderEnabled && normalizedReminderDateTimesCsv == null && !isValidTime(reminderTime.orEmpty())) return
         val normalizedReminderTime = if (reminderEnabled) reminderTime?.trim() else null
         val normalizedReminderMessage = reminderMessage?.trim()?.takeIf { it.isNotEmpty() }
         taskDao.updateTaskDetails(
             taskId = taskId,
             title = sanitized,
+            category = normalizedCategory,
             reminderEnabled = reminderEnabled,
             reminderTime = normalizedReminderTime,
+            reminderDateTimesCsv = normalizedReminderDateTimesCsv,
             reminderMessage = normalizedReminderMessage
         )
     }
 
     suspend fun setTaskDone(taskId: Long, isDone: Boolean) {
-        taskDao.updateDone(taskId, isDone)
+        val completedAt = if (isDone) System.currentTimeMillis() else null
+        taskDao.updateDone(taskId, isDone, completedAt)
         val nextSortOrder = taskDao.getMaxSortOrderForDoneState(isDone = isDone) + 1
         taskDao.updateSortOrder(taskId = taskId, sortOrder = nextSortOrder)
     }
@@ -331,6 +408,13 @@ class HabitRepository @Inject constructor(
     }
 
     suspend fun deleteTask(taskId: Long) = taskDao.deleteById(taskId)
+
+    suspend fun moveAllTasksToCategory(fromCategory: String, toCategory: String) {
+        val from = fromCategory.trim().ifBlank { return }
+        val to = toCategory.trim().ifBlank { DEFAULT_TASK_CATEGORY }
+        if (from == to) return
+        taskDao.moveAllToCategory(fromCategory = from, toCategory = to)
+    }
 
     suspend fun addGoal(title: String) {
         val sanitized = title.trim()
@@ -347,7 +431,8 @@ class HabitRepository @Inject constructor(
     }
 
     suspend fun setGoalDone(goalId: Long, isDone: Boolean) {
-        goalDao.updateDone(goalId, isDone)
+        val completedAt = if (isDone) System.currentTimeMillis() else null
+        goalDao.updateDone(goalId, isDone, completedAt)
         val nextSortOrder = goalDao.getMaxSortOrderForDoneState(isDone = isDone) + 1
         goalDao.updateSortOrder(goalId = goalId, sortOrder = nextSortOrder)
     }
@@ -358,6 +443,12 @@ class HabitRepository @Inject constructor(
         }
     }
 
+    suspend fun renameGoal(goalId: Long, title: String) {
+        val sanitized = title.trim()
+        if (sanitized.isEmpty()) return
+        goalDao.updateTitle(goalId, sanitized)
+    }
+
     suspend fun deleteGoal(goalId: Long) = goalDao.deleteById(goalId)
 
     suspend fun addSubGoal(goalId: Long, title: String) {
@@ -366,8 +457,72 @@ class HabitRepository @Inject constructor(
         subGoalDao.insert(SubGoal(goalId = goalId, title = sanitized, isDone = false, createdAt = System.currentTimeMillis()))
     }
 
-    suspend fun setSubGoalDone(subGoalId: Long, isDone: Boolean) = subGoalDao.updateDone(subGoalId, isDone)
+    suspend fun renameSubGoal(subGoalId: Long, title: String) {
+        val sanitized = title.trim()
+        if (sanitized.isEmpty()) return
+        subGoalDao.updateTitle(subGoalId, sanitized)
+    }
+
+    suspend fun setSubGoalDone(subGoalId: Long, isDone: Boolean) {
+        val completedAt = if (isDone) System.currentTimeMillis() else null
+        subGoalDao.updateDone(subGoalId, isDone, completedAt)
+    }
     suspend fun deleteSubGoal(subGoalId: Long) = subGoalDao.deleteById(subGoalId)
+
+    suspend fun addBirthday(name: String, year: Int, month: Int, day: Int): Long {
+        val sanitized = name.trim()
+        if (sanitized.isEmpty()) return 0L
+        if (!isValidDate(year, month, day)) return 0L
+        return birthdayDao.insert(
+            Birthday(
+                name = sanitized,
+                year = year,
+                month = month,
+                day = day,
+                reminderDateTimesCsv = null,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun updateBirthday(
+        birthdayId: Long,
+        name: String,
+        year: Int,
+        month: Int,
+        day: Int,
+        reminderDateTimesCsv: String?
+    ) {
+        val sanitized = name.trim()
+        if (sanitized.isEmpty()) return
+        if (!isValidDate(year, month, day)) return
+        birthdayDao.update(
+            birthdayId = birthdayId,
+            name = sanitized,
+            year = year,
+            month = month,
+            day = day,
+            reminderDateTimesCsv = normalizeReminderDateTimesCsv(reminderDateTimesCsv)
+        )
+    }
+
+    suspend fun deleteBirthday(birthdayId: Long) = birthdayDao.deleteById(birthdayId)
+
+    fun birthdayOccurrenceInYear(month: Int, day: Int, year: Int): LocalDate {
+        val safeMonth = month.coerceIn(1, 12)
+        val maxDay = YearMonth.of(year, safeMonth).lengthOfMonth()
+        val safeDay = day.coerceIn(1, maxDay)
+        return LocalDate.of(year, safeMonth, safeDay)
+    }
+
+    fun nextBirthdayOccurrence(fromDate: LocalDate, month: Int, day: Int): LocalDate {
+        val currentYearOccurrence = birthdayOccurrenceInYear(month = month, day = day, year = fromDate.year)
+        return if (!currentYearOccurrence.isBefore(fromDate)) {
+            currentYearOccurrence
+        } else {
+            birthdayOccurrenceInYear(month = month, day = day, year = fromDate.year + 1)
+        }
+    }
 
     fun currentBusinessDate(now: LocalDateTime = LocalDateTime.now()): LocalDate = now.minusHours(5).toLocalDate()
 
@@ -378,6 +533,34 @@ class HabitRepository @Inject constructor(
         java.time.Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
 
     fun isValidTime(value: String): Boolean = runCatching { LocalTime.parse(value) }.isSuccess
+    fun parseReminderTimesCsv(value: String?): List<String> {
+        if (value.isNullOrBlank()) return emptyList()
+        return value.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && isValidTime(it) }
+            .distinct()
+    }
+
+    fun isValidReminderTimesCsv(value: String?): Boolean {
+        val parsed = parseReminderTimesCsv(value)
+        return parsed.isNotEmpty()
+    }
+
+    fun parseReminderDateTimesCsv(value: String?): List<Long> {
+        if (value.isNullOrBlank()) return emptyList()
+        return value.split("|")
+            .mapNotNull { token -> token.trim().toLongOrNull() }
+            .distinct()
+            .sorted()
+    }
+
+    fun normalizeReminderDateTimesCsv(value: String?): String? {
+        val parsed = parseReminderDateTimesCsv(value)
+        return parsed.takeIf { it.isNotEmpty() }?.joinToString("|")
+    }
+
+    fun isValidDate(year: Int, month: Int, day: Int): Boolean =
+        runCatching { LocalDate.of(year, month, day) }.isSuccess
 
     fun isScheduledOnDate(
         createdDate: LocalDate,
@@ -425,30 +608,73 @@ class HabitRepository @Inject constructor(
             .toSet()
     }
 
-    private fun buildScheduleItems(habits: List<Habit>, tasks: List<TaskItem>): List<ReminderScheduleItem> {
+    private fun buildScheduleItems(
+        habits: List<Habit>,
+        tasks: List<TaskItem>,
+        birthdays: List<Birthday>
+    ): List<ReminderScheduleItem> {
         val habitItems = habits.asSequence()
-            .filter { it.reminderEnabled && isValidTime(it.reminderTime.orEmpty()) }
-            .map {
-                ReminderScheduleItem(
-                    uniqueKey = "habit:${it.id}",
-                    title = "Habit reminder",
-                    message = it.reminderMessage ?: "Habit: ${it.name}",
-                    timeValue = it.reminderTime.orEmpty()
-                )
+            .filter { it.reminderEnabled }
+            .flatMap { habit ->
+                parseReminderTimesCsv(habit.reminderTime).asSequence().map { timeValue ->
+                    ReminderScheduleItem(
+                        uniqueKey = "habit:${habit.id}:$timeValue",
+                        title = "Habit reminder",
+                        message = habit.reminderMessage ?: "Habit: ${habit.name}",
+                        timeValue = timeValue
+                    )
+                }
             }
 
+        val now = System.currentTimeMillis()
         val taskItems = tasks.asSequence()
-            .filter { !it.isDone && it.reminderEnabled && isValidTime(it.reminderTime.orEmpty()) }
-            .map {
-                ReminderScheduleItem(
-                    uniqueKey = "task:${it.id}",
-                    title = "Task reminder",
-                    message = it.reminderMessage ?: "Task: ${it.title}",
-                    timeValue = it.reminderTime.orEmpty()
-                )
+            .filter { !it.isDone && it.reminderEnabled }
+            .flatMap { task ->
+                val oneTimeItems = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
+                    .asSequence()
+                    .filter { triggerAt -> triggerAt > now }
+                    .mapIndexed { index, triggerAt ->
+                        ReminderScheduleItem(
+                            uniqueKey = "task:${task.id}:one:$index",
+                            title = "Task reminder",
+                            message = task.reminderMessage ?: "Task: ${task.title}",
+                            timeValue = "00:00",
+                            triggerAtMillis = triggerAt
+                        )
+                    }
+
+                val dailyFallback = if (oneTimeItems.none() && isValidTime(task.reminderTime.orEmpty())) {
+                    sequenceOf(
+                        ReminderScheduleItem(
+                            uniqueKey = "task:${task.id}",
+                            title = "Task reminder",
+                            message = task.reminderMessage ?: "Task: ${task.title}",
+                            timeValue = task.reminderTime.orEmpty()
+                        )
+                    )
+                } else {
+                    emptySequence()
+                }
+
+                oneTimeItems + dailyFallback
             }
 
-        return (habitItems + taskItems).toList()
+        val birthdayItems = birthdays.asSequence()
+            .flatMap { birthday ->
+                parseReminderDateTimesCsv(birthday.reminderDateTimesCsv).asSequence()
+                    .filter { triggerAtMillis -> triggerAtMillis > now }
+                    .mapIndexed { index, triggerAtMillis ->
+                        ReminderScheduleItem(
+                            uniqueKey = "birthday:${birthday.id}:$index",
+                            title = "Birthday reminder",
+                            message = "Birthday: ${birthday.name}",
+                            timeValue = "00:00",
+                            triggerAtMillis = triggerAtMillis
+                        )
+                    }
+            }
+
+        return (habitItems + taskItems + birthdayItems).toList()
     }
 
     private fun calculateCurrentStreak(completedDates: Set<LocalDate>): Int {

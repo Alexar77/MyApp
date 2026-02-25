@@ -21,6 +21,9 @@ interface WhoAmINoteDao {
     @Query("UPDATE who_am_i_notes SET content = :content WHERE id = :noteId")
     suspend fun updateContent(noteId: Long, content: String)
 
+    @Query("UPDATE who_am_i_notes SET title = :title WHERE id = :noteId")
+    suspend fun updateTitle(noteId: Long, title: String)
+
     @Query("DELETE FROM who_am_i_notes WHERE id = :noteId")
     suspend fun deleteById(noteId: Long)
 

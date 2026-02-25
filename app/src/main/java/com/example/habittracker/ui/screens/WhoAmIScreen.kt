@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
@@ -39,27 +41,28 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
@@ -71,6 +74,8 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var noteTitleInput by rememberSaveable { mutableStateOf("") }
     var notePendingDelete by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
+    var notePendingRename by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
+    var renameInput by rememberSaveable { mutableStateOf("") }
     var draggingNoteId by remember { mutableStateOf<Long?>(null) }
 
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
@@ -157,6 +162,10 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                                 clipboardManager.setText(AnnotatedString(note.content))
                             },
                             onDelete = { notePendingDelete = note },
+                            onRename = {
+                                notePendingRename = note
+                                renameInput = note.title
+                            },
                             onContentChange = { viewModel.updateSelectedNoteContent(it) }
                         )
                     }
@@ -222,6 +231,35 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (notePendingRename != null) {
+        AlertDialog(
+            onDismissRequest = { notePendingRename = null },
+            title = { Text("Rename note") },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    label = { Text("Note title") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val note = notePendingRename
+                        if (note != null && renameInput.isNotBlank()) {
+                            viewModel.renameNote(note, renameInput)
+                            notePendingRename = null
+                        }
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { notePendingRename = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -236,14 +274,12 @@ private fun NoteCard(
     onDragEnd: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     onContentChange: (String) -> Unit
 ) {
-    var dragY = 0f
+    var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
+    val reorderStepPx = 72f
     var localContent by rememberSaveable(note.id) { mutableStateOf(note.content) }
-    val animatedScale by animateFloatAsState(
-        targetValue = if (isDragging) 1.02f else 1f,
-        animationSpec = spring()
-    )
     val dragContainerColor by animateColorAsState(
         targetValue = if (isDragging) {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
@@ -255,33 +291,33 @@ private fun NoteCard(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = animatedScale
-                scaleY = animatedScale
-            }
+            .offset { IntOffset(0, dragOffsetY.roundToInt()) }
+            .zIndex(if (isDragging) 1f else 0f)
             .pointerInput(note.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
+                    onDragStart = {
+                        dragOffsetY = 0f
+                        onDragStart()
+                    },
                     onDragEnd = {
-                        dragY = 0f
+                        dragOffsetY = 0f
                         onDragEnd()
                     },
                     onDragCancel = {
-                        dragY = 0f
+                        dragOffsetY = 0f
                         onDragEnd()
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        dragY += dragAmount.y
-                        when {
-                            dragY > 28f -> {
-                                onMove(1)
-                                dragY = 0f
-                            }
-                            dragY < -28f -> {
-                                onMove(-1)
-                                dragY = 0f
-                            }
+                        dragOffsetY += dragAmount.y
+
+                        while (dragOffsetY > reorderStepPx) {
+                            onMove(1)
+                            dragOffsetY -= reorderStepPx
+                        }
+                        while (dragOffsetY < -reorderStepPx) {
+                            onMove(-1)
+                            dragOffsetY += reorderStepPx
                         }
                     }
                 )
@@ -309,6 +345,9 @@ private fun NoteCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDelete) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete note")
+                    }
+                    IconButton(onClick = onRename) {
+                        Icon(Icons.Default.Edit, contentDescription = "Rename note")
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,

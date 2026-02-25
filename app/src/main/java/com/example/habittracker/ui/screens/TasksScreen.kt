@@ -1,12 +1,10 @@
 package com.example.habittracker.ui.screens
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -17,35 +15,41 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,6 +64,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -67,7 +72,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.ui.viewmodel.TaskUiItem
 import com.example.habittracker.ui.viewmodel.TasksViewModel
-import java.time.LocalTime
+import com.example.habittracker.ui.viewmodel.ALL_CATEGORIES
+import com.example.habittracker.repository.HabitRepository
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
@@ -77,22 +87,31 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var taskInput by rememberSaveable { mutableStateOf("") }
+    var taskCategoryInput by rememberSaveable { mutableStateOf(HabitRepository.DEFAULT_TASK_CATEGORY) }
     var reminderEnabledInput by rememberSaveable { mutableStateOf(false) }
-    var reminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
+    var reminderDateTimesInput by remember { mutableStateOf(listOf<Long>()) }
     var reminderMessageInput by rememberSaveable { mutableStateOf("") }
-    var reminderTimeError by rememberSaveable { mutableStateOf(false) }
+    var reminderSelectionError by rememberSaveable { mutableStateOf(false) }
+    var isAddCategoryDropdownExpanded by rememberSaveable { mutableStateOf(false) }
     var draggingTaskId by remember { mutableStateOf<Long?>(null) }
     var taskPendingDelete by remember { mutableStateOf<TaskUiItem?>(null) }
     var taskEditing by remember { mutableStateOf<TaskUiItem?>(null) }
     var editTaskInput by rememberSaveable { mutableStateOf("") }
+    var editTaskCategoryInput by rememberSaveable { mutableStateOf(HabitRepository.DEFAULT_TASK_CATEGORY) }
     var editReminderEnabledInput by rememberSaveable { mutableStateOf(false) }
-    var editReminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
+    var editReminderDateTimesInput by remember { mutableStateOf(listOf<Long>()) }
     var editReminderMessageInput by rememberSaveable { mutableStateOf("") }
-    var editReminderTimeError by rememberSaveable { mutableStateOf(false) }
+    var editReminderSelectionError by rememberSaveable { mutableStateOf(false) }
+    var isAddCategoryDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var newCategoryInput by rememberSaveable { mutableStateOf("") }
+    var isDeleteCategoryConfirmVisible by rememberSaveable { mutableStateOf(false) }
+    var taskToTransfer by remember { mutableStateOf<TaskUiItem?>(null) }
+    var transferCategoryInput by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
+    val reminderDateTimeFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm") }
 
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
     val pullRefreshState = rememberPullRefreshState(
@@ -107,10 +126,69 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
         }
     }
 
+    fun openTaskReminderDateTimePicker(onSelected: (Long) -> Unit) {
+        val current = LocalDateTime.now()
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val millis = LocalDateTime.of(year, month + 1, dayOfMonth, hour, minute)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
+                        onSelected(millis)
+                    },
+                    current.hour,
+                    current.minute,
+                    true
+                ).show()
+            },
+            current.year,
+            current.monthValue - 1,
+            current.dayOfMonth
+        ).show()
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Tasks") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Tasks") },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            newCategoryInput = ""
+                            isAddCategoryDialogVisible = true
+                        }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add category")
+                    }
+                    IconButton(
+                        enabled = state.selectedCategory != ALL_CATEGORIES &&
+                            state.selectedCategory != HabitRepository.DEFAULT_TASK_CATEGORY,
+                        onClick = {
+                            isDeleteCategoryConfirmVisible = true
+                        }
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete category")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = { isAddDialogVisible = true }) {
+            FloatingActionButton(onClick = {
+                taskCategoryInput = if (state.selectedCategory == ALL_CATEGORIES) {
+                    HabitRepository.DEFAULT_TASK_CATEGORY
+                } else {
+                    state.selectedCategory
+                }
+                reminderEnabledInput = false
+                reminderDateTimesInput = emptyList()
+                reminderMessageInput = ""
+                reminderSelectionError = false
+                isAddDialogVisible = true
+            }) {
                 Icon(Icons.Default.Add, contentDescription = "Add task")
             }
         }
@@ -127,6 +205,38 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            val selected = state.selectedCategory == ALL_CATEGORIES
+                            AssistChip(
+                                onClick = { viewModel.selectCategory(ALL_CATEGORIES) },
+                                label = { Text(ALL_CATEGORIES) },
+                                colors = if (selected) {
+                                    AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                } else {
+                                    AssistChipDefaults.assistChipColors()
+                                }
+                            )
+                        }
+                        items(state.categories, key = { it }) { category ->
+                            val selected = state.selectedCategory == category
+                            AssistChip(
+                                onClick = { viewModel.selectCategory(category) },
+                                label = { Text(category) },
+                                colors = if (selected) {
+                                    AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                } else {
+                                    AssistChipDefaults.assistChipColors()
+                                }
+                            )
+                        }
+                    }
+                }
                 item {
                     Text("To do", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
@@ -148,13 +258,18 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                             onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
                             onDragStart = { draggingTaskId = task.id },
                             onDragEnd = { draggingTaskId = null },
+                            onTransfer = {
+                                taskToTransfer = task
+                                transferCategoryInput = task.category
+                            },
                             onEdit = {
                                 taskEditing = task
                                 editTaskInput = task.title
+                                editTaskCategoryInput = task.category
                                 editReminderEnabledInput = task.reminderEnabled
-                                editReminderTimeInput = task.reminderTime ?: "09:00"
+                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
                                 editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderTimeError = false
+                                editReminderSelectionError = false
                             }
                         )
                     }
@@ -182,13 +297,18 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                             onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
                             onDragStart = { draggingTaskId = task.id },
                             onDragEnd = { draggingTaskId = null },
+                            onTransfer = {
+                                taskToTransfer = task
+                                transferCategoryInput = task.category
+                            },
                             onEdit = {
                                 taskEditing = task
                                 editTaskInput = task.title
+                                editTaskCategoryInput = task.category
                                 editReminderEnabledInput = task.reminderEnabled
-                                editReminderTimeInput = task.reminderTime ?: "09:00"
+                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
                                 editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderTimeError = false
+                                editReminderSelectionError = false
                             }
                         )
                     }
@@ -215,11 +335,47 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         value = taskInput,
                         onValueChange = {
                             taskInput = it
-                            reminderTimeError = false
+                            reminderSelectionError = false
                         },
                         singleLine = true,
                         label = { Text("Task") }
                     )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = taskCategoryInput,
+                            onValueChange = {},
+                            readOnly = true,
+                            singleLine = true,
+                            label = { Text("Category") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = "Select category"
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clickable { isAddCategoryDropdownExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = isAddCategoryDropdownExpanded,
+                            onDismissRequest = { isAddCategoryDropdownExpanded = false }
+                        ) {
+                            state.categories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category) },
+                                    onClick = {
+                                        taskCategoryInput = category
+                                        isAddCategoryDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -232,42 +388,36 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         )
                     }
                     if (reminderEnabledInput) {
-                        Box(
+                        TextButton(
+                            onClick = {
+                                openTaskReminderDateTimePicker { millis ->
+                                    reminderDateTimesInput = (reminderDateTimesInput + millis).distinct().sorted()
+                                    reminderSelectionError = false
+                                }
+                            }
+                        ) { Text("Add reminder date/time") }
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    val parsed = runCatching { LocalTime.parse(reminderTimeInput) }.getOrNull()
-                                        ?: LocalTime.of(9, 0)
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hour, minute ->
-                                            reminderTimeInput = String.format("%02d:%02d", hour, minute)
-                                            reminderTimeError = false
-                                        },
-                                        parsed.hour,
-                                        parsed.minute,
-                                        true
-                                    ).show()
-                                }
+                                .clickable(enabled = false) { },
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            androidx.compose.material3.OutlinedTextField(
-                                value = reminderTimeInput,
-                                onValueChange = {},
-                                singleLine = true,
-                                enabled = false,
-                                isError = reminderTimeError,
-                                label = { Text("Reminder time (HH:MM)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surface
-                                ),
-                                trailingIcon = {
-                                    Icon(Icons.Default.AccessTime, contentDescription = "Select reminder time")
-                                }
+                            reminderDateTimesInput.forEach { millis ->
+                                val label = Instant.ofEpochMilli(millis)
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDateTime()
+                                    .format(reminderDateTimeFormatter)
+                                AssistChip(
+                                    onClick = { reminderDateTimesInput = reminderDateTimesInput - millis },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        if (reminderSelectionError && reminderDateTimesInput.isEmpty()) {
+                            Text(
+                                text = "Add at least one reminder date/time",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                         androidx.compose.material3.OutlinedTextField(
@@ -287,8 +437,10 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         if (taskInput.isNotBlank()) {
                             val ok = viewModel.addTask(
                                 title = taskInput,
+                                category = taskCategoryInput,
                                 reminderEnabled = reminderEnabledInput,
-                                reminderTime = reminderTimeInput,
+                                reminderTime = null,
+                                reminderDateTimesCsv = reminderDateTimesInput.joinToString("|"),
                                 reminderMessage = reminderMessageInput.takeIf { reminderEnabledInput }
                             )
                             if (ok) {
@@ -302,13 +454,19 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                                     }
                                 }
                                 taskInput = ""
+                                taskCategoryInput = if (state.selectedCategory == ALL_CATEGORIES) {
+                                    HabitRepository.DEFAULT_TASK_CATEGORY
+                                } else {
+                                    state.selectedCategory
+                                }
+                                isAddCategoryDropdownExpanded = false
                                 reminderEnabledInput = false
-                                reminderTimeInput = "09:00"
+                                reminderDateTimesInput = emptyList()
                                 reminderMessageInput = ""
-                                reminderTimeError = false
+                                reminderSelectionError = false
                                 isAddDialogVisible = false
                             } else {
-                                reminderTimeError = reminderEnabledInput
+                                reminderSelectionError = reminderEnabledInput && reminderDateTimesInput.isEmpty()
                             }
                         }
                     }
@@ -317,7 +475,10 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { isAddDialogVisible = false }) { Text("Cancel") }
+                TextButton(onClick = {
+                    isAddCategoryDropdownExpanded = false
+                    isAddDialogVisible = false
+                }) { Text("Cancel") }
             }
         )
     }
@@ -351,10 +512,16 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         value = editTaskInput,
                         onValueChange = {
                             editTaskInput = it
-                            editReminderTimeError = false
+                            editReminderSelectionError = false
                         },
                         singleLine = true,
                         label = { Text("Task") }
+                    )
+                    androidx.compose.material3.OutlinedTextField(
+                        value = editTaskCategoryInput,
+                        onValueChange = { editTaskCategoryInput = it },
+                        singleLine = true,
+                        label = { Text("Category") }
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -368,42 +535,34 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         )
                     }
                     if (editReminderEnabledInput) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val parsed = runCatching { LocalTime.parse(editReminderTimeInput) }.getOrNull()
-                                        ?: LocalTime.of(9, 0)
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hour, minute ->
-                                            editReminderTimeInput = String.format("%02d:%02d", hour, minute)
-                                            editReminderTimeError = false
-                                        },
-                                        parsed.hour,
-                                        parsed.minute,
-                                        true
-                                    ).show()
+                        TextButton(
+                            onClick = {
+                                openTaskReminderDateTimePicker { millis ->
+                                    editReminderDateTimesInput = (editReminderDateTimesInput + millis).distinct().sorted()
+                                    editReminderSelectionError = false
                                 }
+                            }
+                        ) { Text("Add reminder date/time") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            androidx.compose.material3.OutlinedTextField(
-                                value = editReminderTimeInput,
-                                onValueChange = {},
-                                singleLine = true,
-                                enabled = false,
-                                isError = editReminderTimeError,
-                                label = { Text("Reminder time (HH:MM)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surface
-                                ),
-                                trailingIcon = {
-                                    Icon(Icons.Default.AccessTime, contentDescription = "Select reminder time")
-                                }
+                            editReminderDateTimesInput.forEach { millis ->
+                                val label = Instant.ofEpochMilli(millis)
+                                    .atZone(ZoneId.systemDefault())
+                                    .toLocalDateTime()
+                                    .format(reminderDateTimeFormatter)
+                                AssistChip(
+                                    onClick = { editReminderDateTimesInput = editReminderDateTimesInput - millis },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+                        if (editReminderSelectionError && editReminderDateTimesInput.isEmpty()) {
+                            Text(
+                                text = "Add at least one reminder date/time",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                         androidx.compose.material3.OutlinedTextField(
@@ -425,8 +584,10 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                         val ok = viewModel.updateTask(
                             taskId = task.id,
                             title = editTaskInput,
+                            category = editTaskCategoryInput,
                             reminderEnabled = editReminderEnabledInput,
-                            reminderTime = editReminderTimeInput,
+                            reminderTime = null,
+                            reminderDateTimesCsv = editReminderDateTimesInput.joinToString("|"),
                             reminderMessage = editReminderMessageInput
                         )
                         if (ok) {
@@ -441,13 +602,104 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                             }
                             taskEditing = null
                         } else {
-                            editReminderTimeError = editReminderEnabledInput
+                            editReminderSelectionError = editReminderEnabledInput &&
+                                editReminderDateTimesInput.isEmpty()
                         }
                     }
                 ) { Text("Save") }
             },
             dismissButton = {
                 TextButton(onClick = { taskEditing = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (isAddCategoryDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { isAddCategoryDialogVisible = false },
+            title = { Text("Add category") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = newCategoryInput,
+                        onValueChange = { newCategoryInput = it },
+                        singleLine = true,
+                        label = { Text("Category name") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (viewModel.addCategory(newCategoryInput)) {
+                            viewModel.selectCategory(newCategoryInput.trim())
+                            isAddCategoryDialogVisible = false
+                        }
+                    }
+                ) { Text("Add") }
+            },
+            dismissButton = {
+                TextButton(onClick = { isAddCategoryDialogVisible = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (isDeleteCategoryConfirmVisible) {
+        AlertDialog(
+            onDismissRequest = { isDeleteCategoryConfirmVisible = false },
+            title = { Text("Delete category") },
+            text = {
+                Text("Delete \"${state.selectedCategory}\"? Tasks inside will be moved to ${HabitRepository.DEFAULT_TASK_CATEGORY}.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCategory(state.selectedCategory)
+                        isDeleteCategoryConfirmVisible = false
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { isDeleteCategoryConfirmVisible = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (taskToTransfer != null) {
+        AlertDialog(
+            onDismissRequest = { taskToTransfer = null },
+            title = { Text("Transfer task") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Move \"${taskToTransfer?.title}\" to category:")
+                    androidx.compose.material3.OutlinedTextField(
+                        value = transferCategoryInput,
+                        onValueChange = { transferCategoryInput = it },
+                        singleLine = true,
+                        label = { Text("Target category") }
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(state.categories.filter { it != ALL_CATEGORIES }, key = { it }) { category ->
+                            AssistChip(
+                                onClick = { transferCategoryInput = category },
+                                label = { Text(category) }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val current = taskToTransfer ?: return@TextButton
+                        if (viewModel.transferTaskToCategory(current.id, transferCategoryInput)) {
+                            taskToTransfer = null
+                        }
+                    }
+                ) { Text("Transfer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { taskToTransfer = null }) { Text("Cancel") }
             }
         )
     }
@@ -460,55 +712,51 @@ private fun TaskRow(
     isDragging: Boolean,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
+    onTransfer: () -> Unit,
     onMove: (Int) -> Unit,
     onDragStart: () -> Unit,
     onDragEnd: () -> Unit,
     onEdit: () -> Unit
 ) {
-    var dragY = 0f
-    val animatedScale by animateFloatAsState(
-        targetValue = if (isDragging) 1.02f else 1f,
-        animationSpec = spring()
-    )
-    val dragBgColor by animateColorAsState(
-        targetValue = if (isDragging) {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-        } else {
-            Color.Transparent
-        }
-    )
+    var dragOffsetY by remember(task.id) { mutableFloatStateOf(0f) }
+    val reorderStepPx = 72f
+    val dragBgColor = if (isDragging) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+    } else {
+        Color.Transparent
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer { translationY = dragOffsetY }
             .clip(RoundedCornerShape(14.dp))
             .background(dragBgColor)
-            .graphicsLayer {
-                scaleX = animatedScale
-                scaleY = animatedScale
-            }
+            .zIndex(if (isDragging) 1f else 0f)
             .pointerInput(task.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
+                    onDragStart = {
+                        dragOffsetY = 0f
+                        onDragStart()
+                    },
                     onDragEnd = {
-                        dragY = 0f
+                        dragOffsetY = 0f
                         onDragEnd()
                     },
                     onDragCancel = {
-                        dragY = 0f
+                        dragOffsetY = 0f
                         onDragEnd()
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        dragY += dragAmount.y
-                        when {
-                            dragY > 28f -> {
-                                onMove(1)
-                                dragY = 0f
-                            }
-                            dragY < -28f -> {
-                                onMove(-1)
-                                dragY = 0f
-                            }
+                        dragOffsetY += dragAmount.y
+
+                        while (dragOffsetY > reorderStepPx) {
+                            onMove(1)
+                            dragOffsetY -= reorderStepPx
+                        }
+                        while (dragOffsetY < -reorderStepPx) {
+                            onMove(-1)
+                            dragOffsetY += reorderStepPx
                         }
                     }
                 )
@@ -523,21 +771,52 @@ private fun TaskRow(
                 Icon(Icons.Outlined.RadioButtonUnchecked, contentDescription = "Mark as done")
             }
         }
-        Text(
-            modifier = Modifier.weight(1f),
-            text = task.title,
-            textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
-            color = if (task.isDone) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = task.title,
+                textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                color = if (task.isDone) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+            )
+            Text(
+                text = task.category,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (task.isDone && task.completedAt != null) {
+                val completedDateText = remember(task.completedAt) {
+                    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
+                    java.time.Instant.ofEpochMilli(task.completedAt)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                        .format(formatter)
+                }
+                Text(
+                    text = "Completed on $completedDateText",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-        )
+        }
         IconButton(onClick = onEdit) {
             Icon(Icons.Default.Edit, contentDescription = "Edit task")
+        }
+        IconButton(onClick = onTransfer) {
+            Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer task")
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "Delete task")
         }
     }
+}
+
+private fun parseReminderDateTimesCsv(value: String?): List<Long> {
+    if (value.isNullOrBlank()) return emptyList()
+    return value.split("|")
+        .mapNotNull { token -> token.trim().toLongOrNull() }
+        .distinct()
+        .sorted()
 }

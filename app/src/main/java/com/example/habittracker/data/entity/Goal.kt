@@ -8,6 +8,7 @@ data class Goal(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val isDone: Boolean,
+    val completedAt: Long? = null,
     val sortOrder: Int = 0,
     val createdAt: Long
 )

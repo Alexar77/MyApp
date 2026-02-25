@@ -18,8 +18,11 @@ interface GoalDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(goal: Goal)
 
-    @Query("UPDATE goals SET isDone = :isDone WHERE id = :goalId")
-    suspend fun updateDone(goalId: Long, isDone: Boolean)
+    @Query("UPDATE goals SET isDone = :isDone, completedAt = :completedAt WHERE id = :goalId")
+    suspend fun updateDone(goalId: Long, isDone: Boolean, completedAt: Long?)
+
+    @Query("UPDATE goals SET title = :title WHERE id = :goalId")
+    suspend fun updateTitle(goalId: Long, title: String)
 
     @Query("DELETE FROM goals WHERE id = :goalId")
     suspend fun deleteById(goalId: Long)

@@ -70,6 +70,12 @@ class WhoAmIViewModel @Inject constructor(
         viewModelScope.launch { habitRepository.updateWhoAmINoteContent(selectedId, content) }
     }
 
+    fun renameNote(note: WhoAmINoteUiState, title: String) {
+        viewModelScope.launch {
+            habitRepository.renameWhoAmINote(note.id, title)
+        }
+    }
+
     fun deleteNote(note: WhoAmINoteUiState) {
         viewModelScope.launch {
             habitRepository.deleteWhoAmINote(note.id)

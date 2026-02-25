@@ -3,6 +3,7 @@ package com.example.habittracker.di
 import android.content.Context
 import androidx.room.Room
 import com.example.habittracker.data.dao.GoalDao
+import com.example.habittracker.data.dao.BirthdayDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -37,6 +38,7 @@ object AppModule {
     @Provides fun provideTaskDao(database: AppDatabase): TaskDao = database.taskDao()
     @Provides fun provideGoalDao(database: AppDatabase): GoalDao = database.goalDao()
     @Provides fun provideSubGoalDao(database: AppDatabase): SubGoalDao = database.subGoalDao()
+    @Provides fun provideBirthdayDao(database: AppDatabase): BirthdayDao = database.birthdayDao()
 
     @Provides
     @Singleton
@@ -47,7 +49,8 @@ object AppModule {
         whoAmINoteDao: WhoAmINoteDao,
         taskDao: TaskDao,
         goalDao: GoalDao,
-        subGoalDao: SubGoalDao
+        subGoalDao: SubGoalDao,
+        birthdayDao: BirthdayDao
     ): HabitRepository {
         return HabitRepository(
             habitDao = habitDao,
@@ -56,7 +59,8 @@ object AppModule {
             whoAmINoteDao = whoAmINoteDao,
             taskDao = taskDao,
             goalDao = goalDao,
-            subGoalDao = subGoalDao
+            subGoalDao = subGoalDao,
+            birthdayDao = birthdayDao
         )
     }
 }

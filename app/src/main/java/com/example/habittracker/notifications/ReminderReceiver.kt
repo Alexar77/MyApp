@@ -24,7 +24,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val uniqueKey = intent.getStringExtra(EXTRA_UNIQUE_KEY) ?: return
-        val timeValue = intent.getStringExtra(EXTRA_TIME) ?: return
+        val timeValue = intent.getStringExtra(EXTRA_TIME).orEmpty().ifBlank { "00:00" }
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Reminder" }
         val message = intent.getStringExtra(EXTRA_MESSAGE).orEmpty().ifBlank { "Time to check MyApp" }
         val skipReschedule = intent.getBooleanExtra(EXTRA_SKIP_RESCHEDULE, false)

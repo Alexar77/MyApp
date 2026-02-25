@@ -12,6 +12,9 @@ interface HabitDayNoteDao {
     @Query("SELECT * FROM habit_day_notes WHERE habitId = :habitId")
     fun observeNotesForHabit(habitId: Long): Flow<List<HabitDayNote>>
 
+    @Query("SELECT * FROM habit_day_notes")
+    fun observeAllNotes(): Flow<List<HabitDayNote>>
+
     @Query("SELECT * FROM habit_day_notes WHERE habitId = :habitId AND date = :date LIMIT 1")
     suspend fun getNoteForDay(habitId: Long, date: String): HabitDayNote?
 

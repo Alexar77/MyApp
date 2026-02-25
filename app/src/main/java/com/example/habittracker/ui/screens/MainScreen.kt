@@ -3,11 +3,11 @@ package com.example.habittracker.ui.screens
 import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,21 +15,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -48,6 +46,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,19 +59,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.habittracker.notifications.ReminderReceiver
 import com.example.habittracker.ui.components.MonthCalendar
+import com.example.habittracker.ui.viewmodel.GlobalDayDetails
 import com.example.habittracker.ui.viewmodel.MainViewModel
 import com.example.habittracker.repository.HabitRepository.HabitFrequencyType
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
+fun MainScreen(
+    onOpenBirthdays: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    viewModel: MainViewModel = hiltViewModel()
+) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
@@ -84,6 +86,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     var frequencyWeekdaysInput by rememberSaveable { mutableStateOf(setOf(DayOfWeek.MONDAY.value)) }
     var reminderEnabledInput by rememberSaveable { mutableStateOf(false) }
     var reminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
+    var reminderTimesInput by remember { mutableStateOf(listOf("09:00")) }
     var reminderMessageInput by rememberSaveable { mutableStateOf("") }
     var createdDateError by rememberSaveable { mutableStateOf(false) }
     var reminderTimeError by rememberSaveable { mutableStateOf(false) }
@@ -95,6 +98,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     var editFrequencyWeekdaysInput by rememberSaveable { mutableStateOf(setOf(DayOfWeek.MONDAY.value)) }
     var editReminderEnabledInput by rememberSaveable { mutableStateOf(false) }
     var editReminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
+    var editReminderTimesInput by remember { mutableStateOf(listOf("09:00")) }
     var editReminderMessageInput by rememberSaveable { mutableStateOf("") }
     var editReminderTimeError by rememberSaveable { mutableStateOf(false) }
 
@@ -103,25 +107,12 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     var dayNoteInput by rememberSaveable { mutableStateOf("") }
 
     var isDeleteHabitConfirmVisible by rememberSaveable { mutableStateOf(false) }
+    var isGlobalDayDetailsDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var globalDayDetails by remember { mutableStateOf<GlobalDayDetails?>(null) }
     val context = LocalContext.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
-
-    var isRefreshing by rememberSaveable { mutableStateOf(false) }
-    val pullRefreshState = rememberPullRefreshState(
-        refreshing = isRefreshing,
-        onRefresh = {
-            isRefreshing = true
-        }
-    )
-
-    if (isRefreshing) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            delay(650)
-            isRefreshing = false
-        }
-    }
 
     Scaffold(
         topBar = {
@@ -130,20 +121,13 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                 actions = {
                     IconButton(
                         onClick = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val granted = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (!granted) {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    return@IconButton
-                                }
-                            }
-                            sendRandomTestNotification(context)
+                            onOpenNotifications()
                         }
                     ) {
-                        Icon(Icons.Default.NotificationsActive, contentDescription = "Send test notification")
+                        Icon(Icons.Default.NotificationsActive, contentDescription = "Open notifications")
+                    }
+                    IconButton(onClick = onOpenBirthdays) {
+                        Icon(Icons.Default.Cake, contentDescription = "Open birthdays")
                     }
                     IconButton(
                         enabled = screenState.selectedHabitId != null,
@@ -157,7 +141,9 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                     selectedHabit.frequencyWeekdays
                                 ).ifEmpty { setOf(DayOfWeek.MONDAY.value) }
                                 editReminderEnabledInput = selectedHabit.reminderEnabled
-                                editReminderTimeInput = selectedHabit.reminderTime ?: "09:00"
+                                editReminderTimesInput = viewModel.parseReminderTimesCsv(selectedHabit.reminderTime)
+                                    .ifEmpty { listOf("09:00") }
+                                editReminderTimeInput = editReminderTimesInput.firstOrNull() ?: "09:00"
                                 editReminderMessageInput = selectedHabit.reminderMessage.orEmpty()
                                 editReminderTimeError = false
                                 isEditDialogVisible = true
@@ -176,7 +162,11 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { isAddDialogVisible = true }) {
+            FloatingActionButton(onClick = {
+                reminderTimeInput = "09:00"
+                reminderTimesInput = listOf("09:00")
+                isAddDialogVisible = true
+            }) {
                 Icon(Icons.Default.Add, contentDescription = "Add habit")
             }
         }
@@ -185,7 +175,6 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .pullRefresh(pullRefreshState)
         ) {
             if (screenState.habits.isEmpty()) {
                 Column(
@@ -207,13 +196,14 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                     )
                 }
             } else {
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    item {
+                    run {
                         Text(
                             text = "All habits 🔥 ${screenState.globalCurrentStreak}",
                             style = MaterialTheme.typography.labelLarge,
@@ -221,7 +211,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                         )
                     }
 
-                    item {
+                    run {
                         Surface(
                             tonalElevation = 2.dp,
                             shape = MaterialTheme.shapes.large,
@@ -235,17 +225,21 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                     month = screenState.selectedMonth,
                                     completedDates = screenState.globalCompletedDates,
                                     scheduledDates = screenState.globalScheduledDates,
-                                    noteDates = emptySet(),
-                                    createdDate = null,
+                                    birthdayDates = screenState.globalBirthdayDates,
+                                    noteDates = screenState.globalNoteDates,
                                     todayDate = screenState.businessToday,
-                                    onToggleDate = { },
-                                    onOpenDayNote = { }
+                                    onToggleDate = { date ->
+                                        globalDayDetails = viewModel.getGlobalDayDetails(date)
+                                        isGlobalDayDetailsDialogVisible = true
+                                    },
+                                    onOpenDayNote = { },
+                                    interactive = true
                                 )
                             }
                         }
                     }
 
-                    item {
+                    run {
                         Text(
                             text = "Select habit",
                             style = MaterialTheme.typography.labelLarge,
@@ -253,14 +247,13 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                         )
                     }
 
-                    item {
-                        Row(
+                    run {
+                        LazyRow(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                                .fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            screenState.habits.forEach { habitOption ->
+                            items(screenState.habits, key = { it.id }) { habitOption ->
                                 val isSelectedHabit = screenState.selectedHabitId == habitOption.id
                                 AssistChip(
                                     onClick = { viewModel.selectHabit(habitOption.id) },
@@ -277,7 +270,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                         }
                     }
 
-                    item {
+                    run {
                         Surface(
                             tonalElevation = 2.dp,
                             shape = MaterialTheme.shapes.large,
@@ -317,8 +310,8 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                     month = screenState.selectedMonth,
                                     completedDates = screenState.completedDates,
                                     scheduledDates = screenState.scheduledDates,
+                                    birthdayDates = emptySet(),
                                     noteDates = screenState.dayNotesByDate.keys,
-                                    createdDate = screenState.selectedHabitCreatedDate,
                                     todayDate = screenState.businessToday,
                                     onToggleDate = viewModel::toggleDay,
                                     onOpenDayNote = { date ->
@@ -332,14 +325,6 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                     }
                 }
             }
-
-            PullRefreshIndicator(
-                refreshing = isRefreshing,
-                state = pullRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter),
-                backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
         }
     }
 
@@ -539,6 +524,33 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                 )
                             }
 
+                            TextButton(
+                                onClick = {
+                                    if (runCatching { LocalTime.parse(reminderTimeInput) }.isSuccess) {
+                                        reminderTimesInput = (reminderTimesInput + reminderTimeInput).distinct().sorted()
+                                        reminderTimeError = false
+                                    } else {
+                                        reminderTimeError = true
+                                    }
+                                }
+                            ) { Text("Add reminder time") }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                reminderTimesInput.forEach { timeValue ->
+                                    AssistChip(
+                                        onClick = {
+                                            reminderTimesInput = reminderTimesInput - timeValue
+                                        },
+                                        label = { Text(timeValue) }
+                                    )
+                                }
+                            }
+
                             OutlinedTextField(
                                 value = reminderMessageInput,
                                 onValueChange = { reminderMessageInput = it },
@@ -562,7 +574,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                 frequencyIntervalInput.toIntOrNull(),
                                 frequencyWeekdaysInput,
                                 reminderEnabledInput,
-                                reminderTimeInput,
+                                reminderTimesInput.joinToString(","),
                                 reminderMessageInput.takeIf {
                                     showMoreHabitOptions && reminderEnabledInput
                                 }
@@ -585,14 +597,14 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                                 frequencyWeekdaysInput = setOf(DayOfWeek.MONDAY.value)
                                 reminderEnabledInput = false
                                 reminderTimeInput = "09:00"
+                                reminderTimesInput = listOf("09:00")
                                 reminderMessageInput = ""
                                 createdDateError = false
                                 reminderTimeError = false
                                 isAddDialogVisible = false
                             } else {
                                 createdDateError = false
-                                reminderTimeError = reminderEnabledInput &&
-                                    runCatching { LocalTime.parse(reminderTimeInput) }.isFailure
+                                reminderTimeError = reminderEnabledInput && reminderTimesInput.isEmpty()
                             }
                         }
                     }
@@ -753,6 +765,31 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                             )
                         }
 
+                        TextButton(
+                            onClick = {
+                                if (runCatching { LocalTime.parse(editReminderTimeInput) }.isSuccess) {
+                                    editReminderTimesInput = (editReminderTimesInput + editReminderTimeInput).distinct().sorted()
+                                    editReminderTimeError = false
+                                } else {
+                                    editReminderTimeError = true
+                                }
+                            }
+                        ) { Text("Add reminder time") }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            editReminderTimesInput.forEach { timeValue ->
+                                AssistChip(
+                                    onClick = { editReminderTimesInput = editReminderTimesInput - timeValue },
+                                    label = { Text(timeValue) }
+                                )
+                            }
+                        }
+
                         OutlinedTextField(
                             value = editReminderMessageInput,
                             onValueChange = { editReminderMessageInput = it },
@@ -773,7 +810,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                             frequencyIntervalDays = editFrequencyIntervalInput.toIntOrNull(),
                             frequencyWeekdays = editFrequencyWeekdaysInput,
                             reminderEnabled = editReminderEnabledInput,
-                            reminderTime = editReminderTimeInput,
+                            reminderTime = editReminderTimesInput.joinToString(","),
                             reminderMessage = editReminderMessageInput
                         )
                         if (ok) {
@@ -788,7 +825,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
                             }
                             isEditDialogVisible = false
                         } else {
-                            editReminderTimeError = editReminderEnabledInput
+                            editReminderTimeError = editReminderEnabledInput && editReminderTimesInput.isEmpty()
                         }
                     }
                 ) { Text("Save") }
@@ -848,28 +885,67 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
             }
         )
     }
-}
 
-private fun sendRandomTestNotification(context: android.content.Context) {
-    val titles = listOf(
-        "Quick test",
-        "MyApp reminder",
-        "Notification check"
-    )
-    val messages = listOf(
-        "This is a random test notification.",
-        "Your notification setup works.",
-        "Test ping from Home screen."
-    )
+    if (isGlobalDayDetailsDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { isGlobalDayDetailsDialogVisible = false },
+            title = { Text("Details for ${globalDayDetails?.date.orEmpty()}") },
+            text = {
+                val details = globalDayDetails
+                if (details == null) {
+                    Text("No details available.")
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Birthdays",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (details.birthdayNames.isEmpty()) {
+                            Text(
+                                text = "No birthdays",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            details.birthdayNames.forEach { birthdayName ->
+                                Text(text = "🎂 $birthdayName")
+                            }
+                        }
 
-    val now = java.time.LocalTime.now()
-    val timeValue = String.format("%02d:%02d", now.hour, now.minute)
-    val intent = Intent(context, ReminderReceiver::class.java).apply {
-        putExtra(ReminderReceiver.EXTRA_UNIQUE_KEY, "test:${System.currentTimeMillis()}")
-        putExtra(ReminderReceiver.EXTRA_TIME, timeValue)
-        putExtra(ReminderReceiver.EXTRA_TITLE, titles.random())
-        putExtra(ReminderReceiver.EXTRA_MESSAGE, messages.random())
-        putExtra(ReminderReceiver.EXTRA_SKIP_RESCHEDULE, true)
+                        Text(
+                            text = "Habits",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (details.habits.isEmpty()) {
+                            Text(
+                                text = "No habits scheduled for this date",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            details.habits.forEach { habitDetail ->
+                                Text(
+                                    text = if (habitDetail.isDone) {
+                                        "✓ ${habitDetail.habitName}"
+                                    } else {
+                                        "✕ ${habitDetail.habitName}"
+                                    }
+                                )
+                                Text(
+                                    text = "Note: ${habitDetail.note?.takeIf { it.isNotBlank() } ?: "No note"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { isGlobalDayDetailsDialogVisible = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
-    context.sendBroadcast(intent)
 }

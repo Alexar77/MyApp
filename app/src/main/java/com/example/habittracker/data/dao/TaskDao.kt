@@ -21,15 +21,17 @@ interface TaskDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(taskItem: TaskItem)
 
-    @Query("UPDATE tasks SET isDone = :isDone WHERE id = :taskId")
-    suspend fun updateDone(taskId: Long, isDone: Boolean)
+    @Query("UPDATE tasks SET isDone = :isDone, completedAt = :completedAt WHERE id = :taskId")
+    suspend fun updateDone(taskId: Long, isDone: Boolean, completedAt: Long?)
 
     @Query(
         """
         UPDATE tasks
         SET title = :title,
+            category = :category,
             reminderEnabled = :reminderEnabled,
             reminderTime = :reminderTime,
+            reminderDateTimesCsv = :reminderDateTimesCsv,
             reminderMessage = :reminderMessage
         WHERE id = :taskId
         """
@@ -37,8 +39,10 @@ interface TaskDao {
     suspend fun updateTaskDetails(
         taskId: Long,
         title: String,
+        category: String,
         reminderEnabled: Boolean,
         reminderTime: String?,
+        reminderDateTimesCsv: String?,
         reminderMessage: String?
     )
 
@@ -47,4 +51,7 @@ interface TaskDao {
 
     @Query("UPDATE tasks SET sortOrder = :sortOrder WHERE id = :taskId")
     suspend fun updateSortOrder(taskId: Long, sortOrder: Int)
+
+    @Query("UPDATE tasks SET category = :toCategory WHERE category = :fromCategory")
+    suspend fun moveAllToCategory(fromCategory: String, toCategory: String)
 }

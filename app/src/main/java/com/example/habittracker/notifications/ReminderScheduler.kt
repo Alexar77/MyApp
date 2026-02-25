@@ -36,6 +36,10 @@ class ReminderScheduler @Inject constructor(
     }
 
     fun schedule(item: HabitRepository.ReminderScheduleItem): Int {
+        if (item.triggerAtMillis != null) {
+            return scheduleAtMillis(item)
+        }
+
         val parts = item.timeValue.split(":")
         if (parts.size != 2) return requestCodeFor(item.uniqueKey)
 
@@ -62,6 +66,55 @@ class ReminderScheduler @Inject constructor(
         )
 
         val triggerAtMillis = target.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        try {
+            val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+
+            if (canUseExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        } catch (_: SecurityException) {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
+
+        return requestCode
+    }
+
+    private fun scheduleAtMillis(item: HabitRepository.ReminderScheduleItem): Int {
+        val triggerAtMillis = item.triggerAtMillis ?: return requestCodeFor(item.uniqueKey)
+        val requestCode = requestCodeFor(item.uniqueKey)
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            putExtra(ReminderReceiver.EXTRA_UNIQUE_KEY, item.uniqueKey)
+            putExtra(ReminderReceiver.EXTRA_TIME, item.timeValue)
+            putExtra(ReminderReceiver.EXTRA_TITLE, item.title)
+            putExtra(ReminderReceiver.EXTRA_MESSAGE, item.message)
+            putExtra(ReminderReceiver.EXTRA_SKIP_RESCHEDULE, true)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         try {
             val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

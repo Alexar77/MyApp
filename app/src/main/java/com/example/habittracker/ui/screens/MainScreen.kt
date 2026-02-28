@@ -22,12 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -60,6 +56,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.ui.components.MonthCalendar
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.GlobalDayDetails
 import com.example.habittracker.ui.viewmodel.MainViewModel
 import com.example.habittracker.repository.HabitRepository.HabitFrequencyType
@@ -124,10 +121,10 @@ fun MainScreen(
                             onOpenNotifications()
                         }
                     ) {
-                        Icon(Icons.Default.NotificationsActive, contentDescription = "Open notifications")
+                        Icon(AppIcons.NotificationsActive, contentDescription = "Open notifications")
                     }
                     IconButton(onClick = onOpenBirthdays) {
-                        Icon(Icons.Default.Cake, contentDescription = "Open birthdays")
+                        Icon(AppIcons.Cake, contentDescription = "Open birthdays")
                     }
                     IconButton(
                         enabled = screenState.selectedHabitId != null,
@@ -381,7 +378,7 @@ fun MainScreen(
                                     disabledSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                                 ),
                                 trailingIcon = {
-                                    Icon(Icons.Default.CalendarToday, contentDescription = "Select created date")
+                                    Icon(AppIcons.CalendarToday, contentDescription = "Select created date")
                                 },
                                 supportingText = {
                                     Text(
@@ -519,7 +516,7 @@ fun MainScreen(
                                         disabledContainerColor = MaterialTheme.colorScheme.surface
                                     ),
                                     trailingIcon = {
-                                        Icon(Icons.Default.AccessTime, contentDescription = "Select reminder time")
+                                        Icon(AppIcons.AccessTime, contentDescription = "Select reminder time")
                                     }
                                 )
                             }
@@ -760,7 +757,7 @@ fun MainScreen(
                                     disabledContainerColor = MaterialTheme.colorScheme.surface
                                 ),
                                 trailingIcon = {
-                                    Icon(Icons.Default.AccessTime, contentDescription = "Select reminder time")
+                                    Icon(AppIcons.AccessTime, contentDescription = "Select reminder time")
                                 }
                             )
                         }

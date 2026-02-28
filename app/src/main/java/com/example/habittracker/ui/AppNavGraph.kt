@@ -3,7 +3,6 @@ package com.example.habittracker.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
@@ -20,6 +19,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.screens.GoalsScreen
 import com.example.habittracker.ui.screens.BirthdaysScreen
 import com.example.habittracker.ui.screens.MainScreen
@@ -39,7 +39,7 @@ object Routes {
     val WhoAmI = BottomRoute("who_am_i", "Who am I?", Icons.Default.Person)
     val Motivation = BottomRoute("motivational", "Motivation", Icons.Default.Star)
     val Tasks = BottomRoute("tasks", "Tasks", Icons.AutoMirrored.Filled.List)
-    val Goals = BottomRoute("goals", "Goals", Icons.Default.Flag)
+    val Goals = BottomRoute("goals", "Goals", AppIcons.Flag)
     const val BirthdaysRoute = "birthdays"
     const val NotificationsRoute = "notifications"
     val BottomItems = listOf(Home, WhoAmI, Motivation, Tasks, Goals)

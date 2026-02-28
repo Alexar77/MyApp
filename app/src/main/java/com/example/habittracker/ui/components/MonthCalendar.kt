@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 import java.time.YearMonth
 
+private val CalendarCellShape = RoundedCornerShape(10.dp)
+
 @Composable
 fun MonthCalendar(
     month: YearMonth,
@@ -154,7 +156,7 @@ private fun CalendarDayCell(
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(CalendarCellShape)
             .background(bgColor)
             .then(dayModifier)
             .padding(6.dp)

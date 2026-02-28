@@ -6,9 +6,13 @@ import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -42,10 +46,11 @@ class TasksViewModel @Inject constructor(
     val uiState: StateFlow<TasksUiState> = mutableUiState.asStateFlow()
     private var allTasksCache: List<TaskUiItem> = emptyList()
     private val manualCategories = mutableSetOf(HabitRepository.DEFAULT_TASK_CATEGORY)
+    private var reorderJob: Job? = null
 
     init {
         viewModelScope.launch {
-            repository.observeTasks().collect { tasks ->
+            repository.observeTasks().distinctUntilChanged().collect { tasks ->
                 val mapped = tasks.map {
                     TaskUiItem(
                         id = it.id,
@@ -64,7 +69,7 @@ class TasksViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.observeReminderScheduleItems().collect { reminders ->
                 reminderScheduler.rescheduleAll(reminders)
             }
@@ -109,7 +114,7 @@ class TasksViewModel @Inject constructor(
     }
 
     fun deleteTask(task: TaskUiItem) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.deleteTask(task.id)
             reminderScheduler.rescheduleAll(repository.getReminderScheduleItems())
         }
@@ -127,7 +132,15 @@ class TasksViewModel @Inject constructor(
             add(toIndex, removeAt(fromIndex))
         }
 
-        viewModelScope.launch {
+        // Update UI immediately
+        mutableUiState.update { current ->
+            if (isDone) current.copy(done = reordered) else current.copy(pending = reordered)
+        }
+
+        // Debounce DB write - only persist after dragging settles
+        reorderJob?.cancel()
+        reorderJob = viewModelScope.launch {
+            delay(300)
             repository.reorderTasksForDoneState(reordered.map { it.id })
         }
     }
@@ -205,11 +218,13 @@ class TasksViewModel @Inject constructor(
             allTasksCache.filter { it.category == selectedCategory }
         }
 
+        val (done, pending) = filtered.partition { it.isDone }
+
         return TasksUiState(
             categories = categories,
             selectedCategory = selectedCategory,
-            pending = filtered.filter { !it.isDone },
-            done = filtered.filter { it.isDone }
+            pending = pending,
+            done = done
         )
     }
 }

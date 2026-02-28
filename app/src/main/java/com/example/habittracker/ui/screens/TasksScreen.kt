@@ -17,20 +17,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import com.example.habittracker.ui.icons.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,7 +58,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
@@ -79,6 +79,10 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+
+private val TaskRowShape = RoundedCornerShape(14.dp)
+private val CompletedDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
+private val ReminderDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm")
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -111,7 +115,6 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
-    val reminderDateTimeFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm") }
 
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
     val pullRefreshState = rememberPullRefreshState(
@@ -199,56 +202,51 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                 .padding(innerPadding)
                 .pullRefresh(pullRefreshState)
         ) {
-            LazyColumn(
+            Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        item {
-                            val selected = state.selectedCategory == ALL_CATEGORIES
-                            AssistChip(
-                                onClick = { viewModel.selectCategory(ALL_CATEGORIES) },
-                                label = { Text(ALL_CATEGORIES) },
-                                colors = if (selected) {
-                                    AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                } else {
-                                    AssistChipDefaults.assistChipColors()
-                                }
-                            )
-                        }
-                        items(state.categories, key = { it }) { category ->
-                            val selected = state.selectedCategory == category
-                            AssistChip(
-                                onClick = { viewModel.selectCategory(category) },
-                                label = { Text(category) },
-                                colors = if (selected) {
-                                    AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                } else {
-                                    AssistChipDefaults.assistChipColors()
-                                }
-                            )
-                        }
-                    }
-                }
-                item {
-                    Text("To do", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
-                if (state.pending.isEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
-                        Text(
-                            text = "No pending tasks",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        val selected = state.selectedCategory == ALL_CATEGORIES
+                        AssistChip(
+                            onClick = { viewModel.selectCategory(ALL_CATEGORIES) },
+                            label = { Text(ALL_CATEGORIES) },
+                            colors = if (selected) {
+                                AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            } else {
+                                AssistChipDefaults.assistChipColors()
+                            }
                         )
                     }
+                    items(state.categories, key = { it }) { category ->
+                        val selected = state.selectedCategory == category
+                        AssistChip(
+                            onClick = { viewModel.selectCategory(category) },
+                            label = { Text(category) },
+                            colors = if (selected) {
+                                AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                                )
+                            } else {
+                                AssistChipDefaults.assistChipColors()
+                            }
+                        )
+                    }
+                }
+                Text("To do", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (state.pending.isEmpty()) {
+                    Text(
+                        text = "No pending tasks",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
-                    items(state.pending, key = { it.id }) { task ->
+                    state.pending.forEach { task ->
                         TaskRow(
                             modifier = Modifier,
                             task = task,
@@ -275,19 +273,15 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     }
                 }
 
-                item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
-                item {
-                    Text("Done", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Text("Done", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 if (state.done.isEmpty()) {
-                    item {
-                        Text(
-                            text = "No completed tasks yet",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "No completed tasks yet",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
-                    items(state.done, key = { it.id }) { task ->
+                    state.done.forEach { task ->
                         TaskRow(
                             modifier = Modifier,
                             task = task,
@@ -349,7 +343,7 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                             label = { Text("Category") },
                             trailingIcon = {
                                 Icon(
-                                    imageVector = Icons.Default.SwapHoriz,
+                                    imageVector = AppIcons.SwapHoriz,
                                     contentDescription = "Select category"
                                 )
                             },
@@ -406,7 +400,7 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                                 val label = Instant.ofEpochMilli(millis)
                                     .atZone(ZoneId.systemDefault())
                                     .toLocalDateTime()
-                                    .format(reminderDateTimeFormatter)
+                                    .format(ReminderDateTimeFormat)
                                 AssistChip(
                                     onClick = { reminderDateTimesInput = reminderDateTimesInput - millis },
                                     label = { Text(label) }
@@ -551,7 +545,7 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                                 val label = Instant.ofEpochMilli(millis)
                                     .atZone(ZoneId.systemDefault())
                                     .toLocalDateTime()
-                                    .format(reminderDateTimeFormatter)
+                                    .format(ReminderDateTimeFormat)
                                 AssistChip(
                                     onClick = { editReminderDateTimesInput = editReminderDateTimesInput - millis },
                                     label = { Text(label) }
@@ -720,18 +714,22 @@ private fun TaskRow(
 ) {
     var dragOffsetY by remember(task.id) { mutableFloatStateOf(0f) }
     val reorderStepPx = 72f
-    val dragBgColor = if (isDragging) {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    val dragModifier = if (isDragging) {
+        Modifier
+            .clip(TaskRowShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
+            .zIndex(1f)
     } else {
-        Color.Transparent
+        Modifier
     }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer { translationY = dragOffsetY }
-            .clip(RoundedCornerShape(14.dp))
-            .background(dragBgColor)
-            .zIndex(if (isDragging) 1f else 0f)
+            .then(dragModifier)
             .pointerInput(task.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -768,7 +766,7 @@ private fun TaskRow(
             if (task.isDone) {
                 Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
             } else {
-                Icon(Icons.Outlined.RadioButtonUnchecked, contentDescription = "Mark as done")
+                Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
             }
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -788,11 +786,10 @@ private fun TaskRow(
             )
             if (task.isDone && task.completedAt != null) {
                 val completedDateText = remember(task.completedAt) {
-                    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
                     java.time.Instant.ofEpochMilli(task.completedAt)
                         .atZone(ZoneId.systemDefault())
                         .toLocalDate()
-                        .format(formatter)
+                        .format(CompletedDateFormatter)
                 }
                 Text(
                     text = "Completed on $completedDateText",
@@ -801,14 +798,30 @@ private fun TaskRow(
                 )
             }
         }
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = "Edit task")
-        }
-        IconButton(onClick = onTransfer) {
-            Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer task")
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete task")
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Edit") },
+                    onClick = { menuExpanded = false; onEdit() },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Transfer") },
+                    onClick = { menuExpanded = false; onTransfer() },
+                    leadingIcon = { Icon(AppIcons.SwapHoriz, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = { menuExpanded = false; onDelete() },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                )
+            }
         }
     }
 }

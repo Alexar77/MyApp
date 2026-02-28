@@ -22,9 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import com.example.habittracker.ui.icons.AppIcons
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -160,9 +158,9 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                                 )
                                 Icon(
                                     imageVector = if (isToAchieveExpanded) {
-                                        Icons.Default.ExpandLess
+                                        AppIcons.ExpandLess
                                     } else {
-                                        Icons.Default.ExpandMore
+                                        AppIcons.ExpandMore
                                     },
                                     contentDescription = if (isToAchieveExpanded) "Collapse" else "Expand"
                                 )
@@ -170,48 +168,46 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                         }
                     }
 
-                    item {
-                        if (isToAchieveExpanded) {
-                            if (goalsToAchieve.isEmpty()) {
+                    if (isToAchieveExpanded) {
+                        if (goalsToAchieve.isEmpty()) {
+                            item {
                                 Text(
                                     text = "No goals to achieve right now",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    goalsToAchieve.forEach { goal ->
-                                        val expanded = expandedGoalIds.contains(goal.id)
-                                        GoalCard(
-                                            modifier = Modifier,
-                                            goal = goal,
-                                            expanded = expanded,
-                                            isDragging = draggingGoalId == goal.id,
-                                            onToggleGoalDone = { viewModel.toggleGoal(goal) },
-                                            onToggleExpanded = {
-                                                expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
-                                            },
-                                            onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
-                                            onDragStart = { draggingGoalId = goal.id },
-                                            onDragEnd = { draggingGoalId = null },
-                                            onAddSubGoal = {
-                                                selectedGoalIdForSubGoal = goal.id
-                                                subGoalInput = ""
-                                                isSubGoalDialogVisible = true
-                                            },
-                                            onDeleteGoal = { goalPendingDelete = goal },
-                                            onRenameGoal = {
-                                                goalPendingRename = goal
-                                                renameInput = goal.title
-                                            },
-                                            onToggleSubGoal = viewModel::toggleSubGoal,
-                                            onDeleteSubGoal = { subGoalPendingDelete = it },
-                                            onRenameSubGoal = {
-                                                subGoalPendingRename = it
-                                                renameInput = it.title
-                                            }
-                                        )
+                            }
+                        } else {
+                            items(goalsToAchieve, key = { it.id }) { goal ->
+                                val expanded = expandedGoalIds.contains(goal.id)
+                                GoalCard(
+                                    modifier = Modifier,
+                                    goal = goal,
+                                    expanded = expanded,
+                                    isDragging = draggingGoalId == goal.id,
+                                    onToggleGoalDone = { viewModel.toggleGoal(goal) },
+                                    onToggleExpanded = {
+                                        expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
+                                    },
+                                    onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
+                                    onDragStart = { draggingGoalId = goal.id },
+                                    onDragEnd = { draggingGoalId = null },
+                                    onAddSubGoal = {
+                                        selectedGoalIdForSubGoal = goal.id
+                                        subGoalInput = ""
+                                        isSubGoalDialogVisible = true
+                                    },
+                                    onDeleteGoal = { goalPendingDelete = goal },
+                                    onRenameGoal = {
+                                        goalPendingRename = goal
+                                        renameInput = goal.title
+                                    },
+                                    onToggleSubGoal = viewModel::toggleSubGoal,
+                                    onDeleteSubGoal = { subGoalPendingDelete = it },
+                                    onRenameSubGoal = {
+                                        subGoalPendingRename = it
+                                        renameInput = it.title
                                     }
-                                }
+                                )
                             }
                         }
                     }
@@ -240,9 +236,9 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                                 )
                                 Icon(
                                     imageVector = if (isAchievedExpanded) {
-                                        Icons.Default.ExpandLess
+                                        AppIcons.ExpandLess
                                     } else {
-                                        Icons.Default.ExpandMore
+                                        AppIcons.ExpandMore
                                     },
                                     contentDescription = if (isAchievedExpanded) "Collapse" else "Expand"
                                 )
@@ -250,48 +246,46 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                         }
                     }
 
-                    item {
-                        if (isAchievedExpanded) {
-                            if (goalsAchieved.isEmpty()) {
+                    if (isAchievedExpanded) {
+                        if (goalsAchieved.isEmpty()) {
+                            item {
                                 Text(
                                     text = "No achieved goals yet",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            } else {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    goalsAchieved.forEach { goal ->
-                                        val expanded = expandedGoalIds.contains(goal.id)
-                                        GoalCard(
-                                            modifier = Modifier,
-                                            goal = goal,
-                                            expanded = expanded,
-                                            isDragging = draggingGoalId == goal.id,
-                                            onToggleGoalDone = { viewModel.toggleGoal(goal) },
-                                            onToggleExpanded = {
-                                                expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
-                                            },
-                                            onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
-                                            onDragStart = { draggingGoalId = goal.id },
-                                            onDragEnd = { draggingGoalId = null },
-                                            onAddSubGoal = {
-                                                selectedGoalIdForSubGoal = goal.id
-                                                subGoalInput = ""
-                                                isSubGoalDialogVisible = true
-                                            },
-                                            onDeleteGoal = { goalPendingDelete = goal },
-                                            onRenameGoal = {
-                                                goalPendingRename = goal
-                                                renameInput = goal.title
-                                            },
-                                            onToggleSubGoal = viewModel::toggleSubGoal,
-                                            onDeleteSubGoal = { subGoalPendingDelete = it },
-                                            onRenameSubGoal = {
-                                                subGoalPendingRename = it
-                                                renameInput = it.title
-                                            }
-                                        )
+                            }
+                        } else {
+                            items(goalsAchieved, key = { it.id }) { goal ->
+                                val expanded = expandedGoalIds.contains(goal.id)
+                                GoalCard(
+                                    modifier = Modifier,
+                                    goal = goal,
+                                    expanded = expanded,
+                                    isDragging = draggingGoalId == goal.id,
+                                    onToggleGoalDone = { viewModel.toggleGoal(goal) },
+                                    onToggleExpanded = {
+                                        expandedGoalIds = if (expanded) expandedGoalIds - goal.id else expandedGoalIds + goal.id
+                                    },
+                                    onMove = { direction -> viewModel.moveGoal(goal.id, goal.isDone, direction) },
+                                    onDragStart = { draggingGoalId = goal.id },
+                                    onDragEnd = { draggingGoalId = null },
+                                    onAddSubGoal = {
+                                        selectedGoalIdForSubGoal = goal.id
+                                        subGoalInput = ""
+                                        isSubGoalDialogVisible = true
+                                    },
+                                    onDeleteGoal = { goalPendingDelete = goal },
+                                    onRenameGoal = {
+                                        goalPendingRename = goal
+                                        renameInput = goal.title
+                                    },
+                                    onToggleSubGoal = viewModel::toggleSubGoal,
+                                    onDeleteSubGoal = { subGoalPendingDelete = it },
+                                    onRenameSubGoal = {
+                                        subGoalPendingRename = it
+                                        renameInput = it.title
                                     }
-                                }
+                                )
                             }
                         }
                     }
@@ -545,7 +539,7 @@ private fun GoalCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (goal.isDone) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                        imageVector = if (goal.isDone) Icons.Default.CheckCircle else AppIcons.RadioButtonUnchecked,
                         contentDescription = if (goal.isDone) "Mark goal as not done" else "Mark goal as done"
                     )
                     Column(modifier = Modifier.padding(start = 10.dp)) {
@@ -583,7 +577,7 @@ private fun GoalCard(
                 }
                 IconButton(onClick = onToggleExpanded) {
                     Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
                         contentDescription = if (expanded) "Collapse goal" else "Expand goal"
                     )
                 }
@@ -620,7 +614,7 @@ private fun GoalCard(
                                     Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
                                 } else {
                                     Icon(
-                                        Icons.Outlined.RadioButtonUnchecked,
+                                        AppIcons.RadioButtonUnchecked,
                                         contentDescription = "Mark as done"
                                     )
                                 }

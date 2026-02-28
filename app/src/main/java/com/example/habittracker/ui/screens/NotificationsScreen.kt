@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,6 +35,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.notifications.ReminderReceiver
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.NotificationsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,7 +94,7 @@ fun NotificationsScreen(
                             sendRandomTestNotification()
                         }
                     ) {
-                        Icon(Icons.Default.NotificationsActive, contentDescription = "Send test notification")
+                        Icon(AppIcons.NotificationsActive, contentDescription = "Send test notification")
                     }
                 }
             )

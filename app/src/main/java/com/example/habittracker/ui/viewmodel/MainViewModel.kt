@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,8 +77,11 @@ class MainViewModel @Inject constructor(
         )
     )
     val uiState: StateFlow<MainUiState> = mutableUiState.asStateFlow()
+    @Volatile
     private var allCompletedByHabitCache: Map<Long, Set<String>> = emptyMap()
+    @Volatile
     private var birthdaysCache: List<HabitRepository.BirthdayOption> = emptyList()
+    @Volatile
     private var allHabitDayNotesByKeyCache: Map<Pair<Long, String>, String> = emptyMap()
 
     init {
@@ -111,7 +115,7 @@ class MainViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             val completionDatesFlow = selectedHabitIdFlow.flatMapLatest { selectedId ->
                 if (selectedId == null) flowOf(emptySet()) else habitRepository.observeCompletedDateStrings(selectedId)
             }
@@ -260,7 +264,7 @@ class MainViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             habitRepository.observeReminderScheduleItems().collect { reminders ->
                 reminderScheduler.rescheduleAll(reminders)
             }

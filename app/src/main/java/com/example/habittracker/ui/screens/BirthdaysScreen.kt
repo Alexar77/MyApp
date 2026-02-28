@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
@@ -44,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.BirthdayUiItem
 import com.example.habittracker.ui.viewmodel.BirthdaysViewModel
 import java.time.Instant
@@ -170,7 +170,7 @@ fun BirthdaysScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Cake, contentDescription = null)
+                                    Icon(AppIcons.Cake, contentDescription = null)
                                     Text(
                                         text = birthday.name,
                                         style = MaterialTheme.typography.titleMedium,
@@ -252,7 +252,7 @@ fun BirthdaysScreen(
                     enabled = false,
                     singleLine = true,
                     label = { Text("Birthday date (includes year)") },
-                    trailingIcon = { Icon(Icons.Default.Cake, contentDescription = null) },
+                    trailingIcon = { Icon(AppIcons.Cake, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

@@ -22,8 +22,11 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -97,12 +100,12 @@ class HabitRepository @Inject constructor(
                 reminderMessage = it.reminderMessage
             )
         }
-    }
+    }.distinctUntilChanged()
 
     fun observeCompletedDateStrings(habitId: Long): Flow<Set<String>> =
         completionDao.observeCompletionsForHabit(habitId).map { completions ->
             completions.asSequence().filter { it.completed }.map { it.date }.toSet()
-        }
+        }.distinctUntilChanged()
 
     fun observeAllCompletedDateStringsByHabit(): Flow<Map<Long, Set<String>>> =
         completionDao.observeAllCompletions().map { completions ->
@@ -111,7 +114,7 @@ class HabitRepository @Inject constructor(
                 .filter { it.completed }
                 .groupBy(keySelector = { it.habitId }, valueTransform = { it.date })
                 .mapValues { (_, dates) -> dates.toSet() }
-        }
+        }.distinctUntilChanged()
 
     fun observeCurrentStreaks(): Flow<Map<Long, Int>> =
         combine(habitDao.observeHabits(), completionDao.observeAllCompletions()) { habits, completions ->
@@ -138,34 +141,43 @@ class HabitRepository @Inject constructor(
                 habit.id to streak
             }
         }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
 
     fun observeHabitDayNotes(habitId: Long): Flow<Map<String, String>> =
         habitDayNoteDao.observeNotesForHabit(habitId).map { notes ->
             notes.associate { it.date to it.note }
-        }
+        }.distinctUntilChanged()
 
-    fun observeAllHabitDayNotes(): Flow<List<HabitDayNote>> = habitDayNoteDao.observeAllNotes()
+    fun observeAllHabitDayNotes(): Flow<List<HabitDayNote>> =
+        habitDayNoteDao.observeAllNotes().distinctUntilChanged()
 
-    fun observeWhoAmINotes(): Flow<List<WhoAmINote>> = whoAmINoteDao.observeAll()
-    fun observeTasks(): Flow<List<TaskItem>> = taskDao.observeAll()
+    fun observeWhoAmINotes(): Flow<List<WhoAmINote>> =
+        whoAmINoteDao.observeAll().distinctUntilChanged()
+
+    fun observeTasks(): Flow<List<TaskItem>> =
+        taskDao.observeAll().distinctUntilChanged()
 
     fun observeGoalsWithSubGoals(): Flow<List<GoalWithSubGoals>> =
         combine(goalDao.observeAll(), subGoalDao.observeAll()) { goals, subGoals ->
+            val subGoalsByGoalId = subGoals.groupBy { it.goalId }
             goals.map { goal ->
                 GoalWithSubGoals(
                     goalId = goal.id,
                     title = goal.title,
                     isDone = goal.isDone,
                     completedAt = goal.completedAt,
-                    subGoals = subGoals.filter { it.goalId == goal.id }
+                    subGoals = subGoalsByGoalId[goal.id].orEmpty()
                 )
             }
-        }
+        }.distinctUntilChanged()
 
     fun observeReminderScheduleItems(): Flow<List<ReminderScheduleItem>> =
         combine(habitDao.observeHabits(), taskDao.observeAll(), birthdayDao.observeAll()) { habits, tasks, birthdays ->
             buildScheduleItems(habits, tasks, birthdays)
         }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
 
     fun observeBirthdays(): Flow<List<BirthdayOption>> =
         birthdayDao.observeAll().map { birthdays ->
@@ -179,7 +191,7 @@ class HabitRepository @Inject constructor(
                     reminderDateTimesCsv = it.reminderDateTimesCsv
                 )
             }
-        }
+        }.distinctUntilChanged()
 
     suspend fun getReminderScheduleItems(): List<ReminderScheduleItem> {
         val habits = habitDao.getAllHabits()
@@ -715,28 +727,25 @@ class HabitRepository @Inject constructor(
         frequencyIntervalDays: Int?,
         frequencyWeekdays: String?
     ): Int {
-        val scheduledDates = generateSequence(createdDate) { it.plusDays(1) }
-            .takeWhile { !it.isAfter(today) }
-            .filter {
-                isScheduledOnDate(
-                    createdDate = createdDate,
-                    targetDate = it,
-                    frequencyTypeValue = frequencyTypeValue,
-                    frequencyIntervalDays = frequencyIntervalDays,
-                    frequencyWeekdays = frequencyWeekdays
-                )
-            }
-            .toList()
-            .asReversed()
-        if (scheduledDates.isEmpty()) return 0
-
+        // Walk backwards from today – O(streak_length) instead of O(days_since_creation)
         var streak = 0
-        for (scheduledDate in scheduledDates) {
-            if (completedDates.contains(scheduledDate)) {
-                streak += 1
-            } else {
-                break
+        var cursor = today
+        while (!cursor.isBefore(createdDate)) {
+            val scheduled = isScheduledOnDate(
+                createdDate = createdDate,
+                targetDate = cursor,
+                frequencyTypeValue = frequencyTypeValue,
+                frequencyIntervalDays = frequencyIntervalDays,
+                frequencyWeekdays = frequencyWeekdays
+            )
+            if (scheduled) {
+                if (completedDates.contains(cursor)) {
+                    streak += 1
+                } else {
+                    break
+                }
             }
+            cursor = cursor.minusDays(1)
         }
         return streak
     }

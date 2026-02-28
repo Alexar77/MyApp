@@ -1,6 +1,5 @@
 package com.example.habittracker.ui.screens
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,11 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -51,18 +46,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
@@ -104,7 +99,7 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                             clipboardManager.setText(AnnotatedString(combined))
                         }
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy all notes")
+                        Icon(AppIcons.ContentCopy, contentDescription = "Copy all notes")
                     }
                 }
             )
@@ -280,18 +275,18 @@ private fun NoteCard(
     var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
     val reorderStepPx = 72f
     var localContent by rememberSaveable(note.id) { mutableStateOf(note.content) }
-    val dragContainerColor by animateColorAsState(
-        targetValue = if (isDragging) {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        }
-    )
+    val dragContainerColor = if (isDragging) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
-            .offset { IntOffset(0, dragOffsetY.roundToInt()) }
+            .graphicsLayer {
+                translationY = dragOffsetY
+            }
             .zIndex(if (isDragging) 1f else 0f)
             .pointerInput(note.id) {
                 detectDragGesturesAfterLongPress(
@@ -350,7 +345,7 @@ private fun NoteCard(
                         Icon(Icons.Default.Edit, contentDescription = "Rename note")
                     }
                     Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
                         contentDescription = if (expanded) "Collapse note" else "Expand note"
                     )
                 }
@@ -359,7 +354,7 @@ private fun NoteCard(
             if (expanded) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     IconButton(onClick = onCopy) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy note")
+                        Icon(AppIcons.ContentCopy, contentDescription = "Copy note")
                     }
                 }
                 OutlinedTextField(

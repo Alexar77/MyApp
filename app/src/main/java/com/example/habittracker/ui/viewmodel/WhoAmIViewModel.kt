@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,10 +32,12 @@ class WhoAmIViewModel @Inject constructor(
 
     private val mutableUiState = MutableStateFlow(WhoAmIUiState())
     val uiState: StateFlow<WhoAmIUiState> = mutableUiState.asStateFlow()
+    private var contentSaveJob: Job? = null
+    private var reorderJob: Job? = null
 
     init {
         viewModelScope.launch {
-            habitRepository.observeWhoAmINotes().collect { notes ->
+            habitRepository.observeWhoAmINotes().distinctUntilChanged().collect { notes ->
                 val noteUiList = notes.map { note ->
                     WhoAmINoteUiState(id = note.id, title = note.title, content = note.content)
                 }
@@ -67,7 +72,11 @@ class WhoAmIViewModel @Inject constructor(
 
     fun updateSelectedNoteContent(content: String) {
         val selectedId = mutableUiState.value.selectedNoteId ?: return
-        viewModelScope.launch { habitRepository.updateWhoAmINoteContent(selectedId, content) }
+        contentSaveJob?.cancel()
+        contentSaveJob = viewModelScope.launch {
+            delay(300)
+            habitRepository.updateWhoAmINoteContent(selectedId, content)
+        }
     }
 
     fun renameNote(note: WhoAmINoteUiState, title: String) {
@@ -94,7 +103,13 @@ class WhoAmIViewModel @Inject constructor(
             add(toIndex, removeAt(fromIndex))
         }
 
-        viewModelScope.launch {
+        // Update UI immediately
+        mutableUiState.update { it.copy(notes = reordered) }
+
+        // Debounce DB write
+        reorderJob?.cancel()
+        reorderJob = viewModelScope.launch {
+            delay(300)
             habitRepository.reorderWhoAmINotes(reordered.map { it.id })
         }
     }

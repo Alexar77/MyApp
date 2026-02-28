@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -45,12 +46,18 @@ class TasksViewModel @Inject constructor(
     private val mutableUiState = MutableStateFlow(TasksUiState())
     val uiState: StateFlow<TasksUiState> = mutableUiState.asStateFlow()
     private var allTasksCache: List<TaskUiItem> = emptyList()
-    private val manualCategories = mutableSetOf(HabitRepository.DEFAULT_TASK_CATEGORY)
+    private var categoriesCache: List<String> = listOf(HabitRepository.DEFAULT_TASK_CATEGORY)
     private var reorderJob: Job? = null
+    private var categoryReorderJob: Job? = null
 
     init {
         viewModelScope.launch {
-            repository.observeTasks().distinctUntilChanged().collect { tasks ->
+            combine(
+                repository.observeTasks().distinctUntilChanged(),
+                repository.observeTaskCategories()
+            ) { tasks, categories ->
+                Pair(tasks, categories)
+            }.collect { (tasks, dbCategories) ->
                 val mapped = tasks.map {
                     TaskUiItem(
                         id = it.id,
@@ -65,6 +72,7 @@ class TasksViewModel @Inject constructor(
                     )
                 }
                 allTasksCache = mapped
+                categoriesCache = dbCategories.map { it.name }
                 mutableUiState.update { currentState -> buildUiState(currentState.selectedCategory) }
             }
         }
@@ -152,7 +160,7 @@ class TasksViewModel @Inject constructor(
     fun addCategory(category: String): Boolean {
         val sanitized = category.trim()
         if (sanitized.isEmpty() || sanitized == ALL_CATEGORIES) return false
-        manualCategories.add(sanitized)
+        viewModelScope.launch { repository.addTaskCategory(sanitized) }
         mutableUiState.update { buildUiState(sanitized) }
         return true
     }
@@ -162,15 +170,36 @@ class TasksViewModel @Inject constructor(
         if (sanitized.isEmpty() || sanitized == ALL_CATEGORIES || sanitized == HabitRepository.DEFAULT_TASK_CATEGORY) {
             return false
         }
-        manualCategories.remove(sanitized)
         viewModelScope.launch {
-            repository.moveAllTasksToCategory(
-                fromCategory = sanitized,
-                toCategory = HabitRepository.DEFAULT_TASK_CATEGORY
-            )
+            repository.deleteAllTasksInCategory(sanitized)
+            repository.deleteTaskCategory(sanitized)
         }
         mutableUiState.update { buildUiState(HabitRepository.DEFAULT_TASK_CATEGORY) }
         return true
+    }
+
+    fun moveCategory(categoryName: String, direction: Int) {
+        val cats = mutableUiState.value.categories
+        val fromIndex = cats.indexOf(categoryName)
+        if (fromIndex == -1) return
+
+        val toIndex = (fromIndex + direction).coerceIn(0, cats.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reordered = cats.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+
+        // Update UI immediately
+        categoriesCache = reordered
+        mutableUiState.update { it.copy(categories = reordered) }
+
+        // Debounce DB write
+        categoryReorderJob?.cancel()
+        categoryReorderJob = viewModelScope.launch {
+            delay(300)
+            repository.reorderTaskCategories(reordered)
+        }
     }
 
     fun transferTaskToCategory(taskId: Long, targetCategory: String): Boolean {
@@ -180,8 +209,8 @@ class TasksViewModel @Inject constructor(
         val existingTask = allTasksCache.firstOrNull { it.id == taskId } ?: return false
         if (existingTask.category == sanitizedTarget) return true
 
-        manualCategories.add(sanitizedTarget)
         viewModelScope.launch {
+            repository.addTaskCategory(sanitizedTarget)
             repository.updateTask(
                 taskId = existingTask.id,
                 title = existingTask.title,
@@ -196,17 +225,7 @@ class TasksViewModel @Inject constructor(
     }
 
     private fun buildUiState(requestedCategory: String): TasksUiState {
-        val categories = (allTasksCache.asSequence()
-            .map { it.category }
-            .filter { it.isNotBlank() }
-            .toSet()
-            .toMutableSet())
-            .apply {
-                add(HabitRepository.DEFAULT_TASK_CATEGORY)
-                addAll(manualCategories)
-            }
-            .toList()
-            .sortedBy { it.lowercase() }
+        val categories = categoriesCache
 
         val selectedCategory = requestedCategory.takeIf {
             it == ALL_CATEGORIES || categories.contains(it)

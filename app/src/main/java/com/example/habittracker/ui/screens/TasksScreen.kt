@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -224,19 +226,67 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                             }
                         )
                     }
-                    items(state.categories, key = { it }) { category ->
-                        val selected = state.selectedCategory == category
-                        AssistChip(
-                            onClick = { viewModel.selectCategory(category) },
-                            label = { Text(category) },
-                            colors = if (selected) {
-                                AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            } else {
-                                AssistChipDefaults.assistChipColors()
+                }
+                run {
+                    var draggingCategory by remember { mutableStateOf<String?>(null) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        state.categories.forEach { category ->
+                            key(category) {
+                            val selected = state.selectedCategory == category
+                            val isDragging = draggingCategory == category
+                            var dragOffsetX by remember(category) { mutableFloatStateOf(0f) }
+                            val reorderStepPx = 80f
+                            AssistChip(
+                                onClick = { viewModel.selectCategory(category) },
+                                label = { Text(category) },
+                                colors = if (selected) {
+                                    AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                } else {
+                                    AssistChipDefaults.assistChipColors()
+                                },
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        translationX = dragOffsetX
+                                        alpha = if (isDragging) 0.8f else 1f
+                                    }
+                                    .pointerInput(category) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = {
+                                                dragOffsetX = 0f
+                                                draggingCategory = category
+                                            },
+                                            onDragEnd = {
+                                                dragOffsetX = 0f
+                                                draggingCategory = null
+                                            },
+                                            onDragCancel = {
+                                                dragOffsetX = 0f
+                                                draggingCategory = null
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                dragOffsetX += dragAmount.x
+                                                while (dragOffsetX > reorderStepPx) {
+                                                    viewModel.moveCategory(category, 1)
+                                                    dragOffsetX -= reorderStepPx
+                                                }
+                                                while (dragOffsetX < -reorderStepPx) {
+                                                    viewModel.moveCategory(category, -1)
+                                                    dragOffsetX += reorderStepPx
+                                                }
+                                            }
+                                        )
+                                    }
+                            )
                             }
-                        )
+                        }
                     }
                 }
                 Text("To do", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -643,7 +693,7 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
             onDismissRequest = { isDeleteCategoryConfirmVisible = false },
             title = { Text("Delete category") },
             text = {
-                Text("Delete \"${state.selectedCategory}\"? Tasks inside will be moved to ${HabitRepository.DEFAULT_TASK_CATEGORY}.")
+                Text("Delete \"${state.selectedCategory}\"? All tasks inside will be permanently deleted.")
             },
             confirmButton = {
                 TextButton(

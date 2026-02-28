@@ -6,6 +6,7 @@ import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
 import com.example.habittracker.data.dao.SubGoalDao
+import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
@@ -14,6 +15,7 @@ import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
 import com.example.habittracker.data.entity.SubGoal
+import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
 import com.example.habittracker.data.entity.WhoAmINote
 import java.time.DayOfWeek
@@ -38,6 +40,7 @@ class HabitRepository @Inject constructor(
     private val habitDayNoteDao: HabitDayNoteDao,
     private val whoAmINoteDao: WhoAmINoteDao,
     private val taskDao: TaskDao,
+    private val taskCategoryDao: TaskCategoryDao,
     private val goalDao: GoalDao,
     private val subGoalDao: SubGoalDao,
     private val birthdayDao: BirthdayDao
@@ -244,6 +247,7 @@ class HabitRepository @Inject constructor(
             Habit(
                 name = sanitized,
                 createdAt = createdAtMillis ?: defaultCreated,
+                sortOrder = habitDao.getMaxSortOrder() + 1,
                 frequencyType = normalizedFrequencyType,
                 frequencyIntervalDays = normalizedFrequencyInterval,
                 frequencyWeekdays = normalizedFrequencyWeekdays,
@@ -252,6 +256,12 @@ class HabitRepository @Inject constructor(
                 reminderMessage = normalizedReminderMessage
             )
         )
+    }
+
+    suspend fun reorderHabits(orderedHabitIds: List<Long>) {
+        orderedHabitIds.forEachIndexed { index, habitId ->
+            habitDao.updateSortOrder(habitId, index)
+        }
     }
 
     suspend fun updateHabit(
@@ -426,6 +436,36 @@ class HabitRepository @Inject constructor(
         val to = toCategory.trim().ifBlank { DEFAULT_TASK_CATEGORY }
         if (from == to) return
         taskDao.moveAllToCategory(fromCategory = from, toCategory = to)
+    }
+
+    suspend fun deleteAllTasksInCategory(category: String) {
+        val sanitized = category.trim()
+        if (sanitized.isBlank()) return
+        taskDao.deleteByCategory(sanitized)
+    }
+
+    // ---- Task categories ----
+
+    fun observeTaskCategories(): Flow<List<TaskCategory>> =
+        taskCategoryDao.observeAll().distinctUntilChanged()
+
+    suspend fun addTaskCategory(name: String) {
+        val sanitized = name.trim()
+        if (sanitized.isBlank()) return
+        val nextOrder = taskCategoryDao.getMaxSortOrder() + 1
+        taskCategoryDao.insert(TaskCategory(name = sanitized, sortOrder = nextOrder))
+    }
+
+    suspend fun deleteTaskCategory(name: String) {
+        val sanitized = name.trim()
+        if (sanitized.isBlank() || sanitized == DEFAULT_TASK_CATEGORY) return
+        taskCategoryDao.deleteByName(sanitized)
+    }
+
+    suspend fun reorderTaskCategories(orderedNames: List<String>) {
+        orderedNames.forEachIndexed { index, name ->
+            taskCategoryDao.updateSortOrder(name, index)
+        }
     }
 
     suspend fun addGoal(title: String) {

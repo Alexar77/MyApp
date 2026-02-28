@@ -24,8 +24,12 @@ import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -161,7 +165,9 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                                 notePendingRename = note
                                 renameInput = note.title
                             },
-                            onContentChange = { viewModel.updateSelectedNoteContent(it) }
+                            isSaving = state.savingNoteId == note.id,
+                            onContentChange = { viewModel.updateSelectedNoteContent(it) },
+                            onSave = { viewModel.saveNoteContent(note.id, it) }
                         )
                     }
                 }
@@ -270,7 +276,9 @@ private fun NoteCard(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
-    onContentChange: (String) -> Unit
+    isSaving: Boolean,
+    onContentChange: (String) -> Unit,
+    onSave: (String) -> Unit
 ) {
     var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
     val reorderStepPx = 72f
@@ -369,6 +377,23 @@ private fun NoteCard(
                     label = { Text("Write your note") },
                     shape = RoundedCornerShape(22.dp)
                 )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(
+                        onClick = { onSave(localContent) },
+                        enabled = !isSaving
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Saving...")
+                        } else {
+                            Text("Save")
+                        }
+                    }
+                }
             }
         }
     }

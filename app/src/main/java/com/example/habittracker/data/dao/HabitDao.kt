@@ -10,11 +10,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface HabitDao {
-    @Query("SELECT * FROM habits ORDER BY createdAt DESC")
+    @Query("SELECT * FROM habits ORDER BY sortOrder ASC, createdAt DESC")
     fun observeHabits(): Flow<List<Habit>>
 
-    @Query("SELECT * FROM habits ORDER BY createdAt DESC")
+    @Query("SELECT * FROM habits ORDER BY sortOrder ASC, createdAt DESC")
     suspend fun getAllHabits(): List<Habit>
+
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM habits")
+    suspend fun getMaxSortOrder(): Int
+
+    @Query("UPDATE habits SET sortOrder = :sortOrder WHERE id = :habitId")
+    suspend fun updateSortOrder(habitId: Long, sortOrder: Int)
 
     @Query("SELECT * FROM habits WHERE id = :habitId LIMIT 1")
     fun observeHabit(habitId: Long): Flow<Habit?>

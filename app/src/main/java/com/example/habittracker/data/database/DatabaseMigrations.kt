@@ -226,6 +226,55 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Add sortOrder to habits table
+            db.execSQL("ALTER TABLE `habits` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            // Initialize sortOrder for existing habits based on current createdAt DESC order
+            db.execSQL(
+                """
+                UPDATE `habits`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `habits` h2
+                    WHERE h2.`createdAt` > `habits`.`createdAt`
+                      OR (h2.`createdAt` = `habits`.`createdAt` AND h2.`id` > `habits`.`id`)
+                )
+                """.trimIndent()
+            )
+
+            // Create task_categories table
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `task_categories` (
+                    `name` TEXT NOT NULL,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`name`)
+                )
+                """.trimIndent()
+            )
+            // Populate from existing task categories + ensure "General" exists
+            db.execSQL("INSERT OR IGNORE INTO `task_categories` (`name`, `sortOrder`) VALUES ('General', 0)")
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO `task_categories` (`name`, `sortOrder`)
+                SELECT DISTINCT `category`, 0 FROM `tasks` WHERE `category` != 'General' AND `category` != ''
+                """.trimIndent()
+            )
+            // Assign sequential sortOrder to inserted categories
+            db.execSQL(
+                """
+                UPDATE `task_categories`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `task_categories` c2
+                    WHERE c2.`name` < `task_categories`.`name`
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -240,6 +289,7 @@ object DatabaseMigrations {
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
-        MIGRATION_14_15
+        MIGRATION_14_15,
+        MIGRATION_15_16
     )
 }

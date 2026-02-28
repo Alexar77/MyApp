@@ -22,7 +22,8 @@ data class WhoAmINoteUiState(
 
 data class WhoAmIUiState(
     val notes: List<WhoAmINoteUiState> = emptyList(),
-    val selectedNoteId: Long? = null
+    val selectedNoteId: Long? = null,
+    val savingNoteId: Long? = null
 )
 
 @HiltViewModel
@@ -72,10 +73,23 @@ class WhoAmIViewModel @Inject constructor(
 
     fun updateSelectedNoteContent(content: String) {
         val selectedId = mutableUiState.value.selectedNoteId ?: return
+        // Update local UI state so the text field reflects the change immediately
+        mutableUiState.update { state ->
+            state.copy(
+                notes = state.notes.map { note ->
+                    if (note.id == selectedId) note.copy(content = content) else note
+                }
+            )
+        }
+    }
+
+    fun saveNoteContent(noteId: Long, content: String) {
         contentSaveJob?.cancel()
         contentSaveJob = viewModelScope.launch {
-            delay(300)
-            habitRepository.updateWhoAmINoteContent(selectedId, content)
+            mutableUiState.update { it.copy(savingNoteId = noteId) }
+            habitRepository.updateWhoAmINoteContent(noteId, content)
+            delay(400)
+            mutableUiState.update { it.copy(savingNoteId = null) }
         }
     }
 

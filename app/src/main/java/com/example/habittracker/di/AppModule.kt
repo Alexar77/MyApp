@@ -8,6 +8,7 @@ import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
 import com.example.habittracker.data.dao.SubGoalDao
+import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.database.AppDatabase
@@ -36,6 +37,7 @@ object AppModule {
     @Provides fun provideHabitDayNoteDao(database: AppDatabase): HabitDayNoteDao = database.habitDayNoteDao()
     @Provides fun provideWhoAmINoteDao(database: AppDatabase): WhoAmINoteDao = database.whoAmINoteDao()
     @Provides fun provideTaskDao(database: AppDatabase): TaskDao = database.taskDao()
+    @Provides fun provideTaskCategoryDao(database: AppDatabase): TaskCategoryDao = database.taskCategoryDao()
     @Provides fun provideGoalDao(database: AppDatabase): GoalDao = database.goalDao()
     @Provides fun provideSubGoalDao(database: AppDatabase): SubGoalDao = database.subGoalDao()
     @Provides fun provideBirthdayDao(database: AppDatabase): BirthdayDao = database.birthdayDao()
@@ -48,6 +50,7 @@ object AppModule {
         habitDayNoteDao: HabitDayNoteDao,
         whoAmINoteDao: WhoAmINoteDao,
         taskDao: TaskDao,
+        taskCategoryDao: TaskCategoryDao,
         goalDao: GoalDao,
         subGoalDao: SubGoalDao,
         birthdayDao: BirthdayDao
@@ -58,6 +61,7 @@ object AppModule {
             habitDayNoteDao = habitDayNoteDao,
             whoAmINoteDao = whoAmINoteDao,
             taskDao = taskDao,
+            taskCategoryDao = taskCategoryDao,
             goalDao = goalDao,
             subGoalDao = subGoalDao,
             birthdayDao = birthdayDao

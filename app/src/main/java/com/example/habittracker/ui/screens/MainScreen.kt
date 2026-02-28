@@ -6,6 +6,7 @@ import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -41,12 +42,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -245,24 +250,64 @@ fun MainScreen(
                     }
 
                     run {
-                        LazyRow(
+                        var draggingHabitId by remember { mutableStateOf<Long?>(null) }
+                        Row(
                             modifier = Modifier
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(screenState.habits, key = { it.id }) { habitOption ->
+                            screenState.habits.forEach { habitOption ->
+                                key(habitOption.id) {
                                 val isSelectedHabit = screenState.selectedHabitId == habitOption.id
+                                val isDragging = draggingHabitId == habitOption.id
+                                var dragOffsetX by remember(habitOption.id) { mutableFloatStateOf(0f) }
+                                val reorderStepPx = 80f
                                 AssistChip(
                                     onClick = { viewModel.selectHabit(habitOption.id) },
-                                    label = { Text("${habitOption.name} 🔥 ${habitOption.currentStreak}") },
+                                    label = { Text("${habitOption.name} \uD83D\uDD25 ${habitOption.currentStreak}") },
                                     colors = if (isSelectedHabit) {
                                         AssistChipDefaults.assistChipColors(
                                             containerColor = MaterialTheme.colorScheme.primaryContainer
                                         )
                                     } else {
                                         AssistChipDefaults.assistChipColors()
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            translationX = dragOffsetX
+                                            alpha = if (isDragging) 0.8f else 1f
+                                        }
+                                        .pointerInput(habitOption.id) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = {
+                                                    dragOffsetX = 0f
+                                                    draggingHabitId = habitOption.id
+                                                },
+                                                onDragEnd = {
+                                                    dragOffsetX = 0f
+                                                    draggingHabitId = null
+                                                },
+                                                onDragCancel = {
+                                                    dragOffsetX = 0f
+                                                    draggingHabitId = null
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    dragOffsetX += dragAmount.x
+                                                    while (dragOffsetX > reorderStepPx) {
+                                                        viewModel.moveHabit(habitOption.id, 1)
+                                                        dragOffsetX -= reorderStepPx
+                                                    }
+                                                    while (dragOffsetX < -reorderStepPx) {
+                                                        viewModel.moveHabit(habitOption.id, -1)
+                                                        dragOffsetX += reorderStepPx
+                                                    }
+                                                }
+                                            )
+                                        }
                                 )
+                                }
                             }
                         }
                     }

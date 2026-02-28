@@ -10,6 +10,8 @@ import java.time.YearMonth
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +85,7 @@ class MainViewModel @Inject constructor(
     private var birthdaysCache: List<HabitRepository.BirthdayOption> = emptyList()
     @Volatile
     private var allHabitDayNotesByKeyCache: Map<Pair<Long, String>, String> = emptyMap()
+    private var habitReorderJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -334,6 +337,29 @@ class MainViewModel @Inject constructor(
 
     fun selectHabit(habitId: Long) {
         selectedHabitIdFlow.value = habitId
+    }
+
+    fun moveHabit(habitId: Long, direction: Int) {
+        val habits = mutableUiState.value.habits
+        val fromIndex = habits.indexOfFirst { it.id == habitId }
+        if (fromIndex == -1) return
+
+        val toIndex = (fromIndex + direction).coerceIn(0, habits.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reordered = habits.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+
+        // Update UI immediately
+        mutableUiState.update { it.copy(habits = reordered) }
+
+        // Debounce DB write
+        habitReorderJob?.cancel()
+        habitReorderJob = viewModelScope.launch {
+            delay(300)
+            habitRepository.reorderHabits(reordered.map { it.id })
+        }
     }
 
     fun deleteSelectedHabit() {

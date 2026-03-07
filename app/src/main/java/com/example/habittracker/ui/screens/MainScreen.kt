@@ -109,6 +109,7 @@ fun MainScreen(
     var dayNoteInput by rememberSaveable { mutableStateOf("") }
 
     var isDeleteHabitConfirmVisible by rememberSaveable { mutableStateOf(false) }
+    var isSeedDataConfirmVisible by rememberSaveable { mutableStateOf(false) }
     var isGlobalDayDetailsDialogVisible by rememberSaveable { mutableStateOf(false) }
     var globalDayDetails by remember { mutableStateOf<GlobalDayDetails?>(null) }
     val context = LocalContext.current
@@ -130,6 +131,9 @@ fun MainScreen(
                     }
                     IconButton(onClick = onOpenBirthdays) {
                         Icon(AppIcons.Cake, contentDescription = "Open birthdays")
+                    }
+                    TextButton(onClick = { isSeedDataConfirmVisible = true }) {
+                        Text("Seed")
                     }
                     IconButton(
                         enabled = screenState.selectedHabitId != null,
@@ -656,6 +660,31 @@ fun MainScreen(
             },
             dismissButton = {
                 TextButton(onClick = { isAddDialogVisible = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (isSeedDataConfirmVisible) {
+        AlertDialog(
+            onDismissRequest = { isSeedDataConfirmVisible = false },
+            title = { Text("Seed test data") },
+            text = {
+                Text("This will add a large set of demo habits, completions, notes, tasks, goals, birthdays, and reminders for testing.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        isSeedDataConfirmVisible = false
+                        viewModel.seedTestData()
+                    }
+                ) {
+                    Text("Add data")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isSeedDataConfirmVisible = false }) {
                     Text("Cancel")
                 }
             }

@@ -370,6 +370,13 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun seedTestData() {
+        viewModelScope.launch {
+            habitRepository.seedTestData()
+            reminderScheduler.rescheduleAll(habitRepository.getReminderScheduleItems())
+        }
+    }
+
     fun showPreviousMonth() {
         selectedMonthFlow.update { currentMonth -> currentMonth.minusMonths(1) }
     }

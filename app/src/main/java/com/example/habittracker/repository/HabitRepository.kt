@@ -258,6 +258,242 @@ class HabitRepository @Inject constructor(
         )
     }
 
+    suspend fun seedTestData() {
+        val today = currentBusinessDate()
+        val nowMillis = System.currentTimeMillis()
+        val seededHabitIds = mutableListOf<Long>()
+
+        repeat(12) { index ->
+            val createdDate = today.minusMonths(6).plusDays(index.toLong() * 4)
+            val habitId = habitDao.insertHabit(
+                Habit(
+                    name = "Demo Daily Habit ${index + 1}",
+                    createdAt = localDateToEpochMillis(createdDate),
+                    sortOrder = habitDao.getMaxSortOrder() + 1,
+                    frequencyType = HabitFrequencyType.DAILY.name,
+                    reminderEnabled = index % 2 == 0,
+                    reminderTime = if (index % 2 == 0) "07:${(index % 6) * 10}".padEnd(5, '0') else null,
+                    reminderMessage = if (index % 2 == 0) "Daily block ${index + 1}" else null
+                )
+            )
+            seededHabitIds += habitId
+
+            calculateScheduledDates(
+                createdDate = createdDate,
+                untilDate = today,
+                frequencyTypeValue = HabitFrequencyType.DAILY.name,
+                frequencyIntervalDays = null,
+                frequencyWeekdays = null
+            ).sorted().takeLast(120).forEachIndexed { completionIndex, date ->
+                completionDao.upsertCompletion(
+                    HabitCompletion(
+                        habitId = habitId,
+                        date = date,
+                        completed = (completionIndex + index) % 6 != 2
+                    )
+                )
+            }
+
+            listOf(1L, 9L, 24L, 41L).forEach { offset ->
+                val noteDate = today.minusDays(offset + index)
+                if (!noteDate.isBefore(createdDate)) {
+                    habitDayNoteDao.upsert(
+                        HabitDayNote(
+                            habitId = habitId,
+                            date = noteDate.toString(),
+                            note = "Demo note ${index + 1} on ${noteDate.dayOfWeek.name.lowercase()}."
+                        )
+                    )
+                }
+            }
+        }
+
+        val weeklyPatterns = listOf("1,3,5", "2,4", "6,7", "1,4", "3,6")
+        repeat(10) { index ->
+            val weekdays = weeklyPatterns[index % weeklyPatterns.size]
+            val createdDate = today.minusMonths(5).plusDays((index * 5).toLong())
+            val habitId = habitDao.insertHabit(
+                Habit(
+                    name = "Demo Weekly Habit ${index + 1}",
+                    createdAt = localDateToEpochMillis(createdDate),
+                    sortOrder = habitDao.getMaxSortOrder() + 1,
+                    frequencyType = HabitFrequencyType.WEEKLY.name,
+                    frequencyWeekdays = weekdays,
+                    reminderEnabled = true,
+                    reminderTime = listOf("08:15", "12:30", "18:45")[index % 3],
+                    reminderMessage = "Weekly pattern $weekdays"
+                )
+            )
+            seededHabitIds += habitId
+
+            calculateScheduledDates(
+                createdDate = createdDate,
+                untilDate = today,
+                frequencyTypeValue = HabitFrequencyType.WEEKLY.name,
+                frequencyIntervalDays = null,
+                frequencyWeekdays = weekdays
+            ).sorted().takeLast(80).forEachIndexed { completionIndex, date ->
+                completionDao.upsertCompletion(
+                    HabitCompletion(
+                        habitId = habitId,
+                        date = date,
+                        completed = (completionIndex + index) % 4 != 1
+                    )
+                )
+            }
+        }
+
+        repeat(8) { index ->
+            val interval = (index % 4) + 2
+            val createdDate = today.minusMonths(4).plusDays((index * 6).toLong())
+            val habitId = habitDao.insertHabit(
+                Habit(
+                    name = "Demo Every-$interval-Days Habit ${index + 1}",
+                    createdAt = localDateToEpochMillis(createdDate),
+                    sortOrder = habitDao.getMaxSortOrder() + 1,
+                    frequencyType = HabitFrequencyType.EVERY_N_DAYS.name,
+                    frequencyIntervalDays = interval,
+                    reminderEnabled = index % 3 == 0,
+                    reminderTime = if (index % 3 == 0) "20:00" else null,
+                    reminderMessage = if (index % 3 == 0) "Interval cadence $interval" else null
+                )
+            )
+            seededHabitIds += habitId
+
+            calculateScheduledDates(
+                createdDate = createdDate,
+                untilDate = today,
+                frequencyTypeValue = HabitFrequencyType.EVERY_N_DAYS.name,
+                frequencyIntervalDays = interval,
+                frequencyWeekdays = null
+            ).sorted().takeLast(60).forEachIndexed { completionIndex, date ->
+                completionDao.upsertCompletion(
+                    HabitCompletion(
+                        habitId = habitId,
+                        date = date,
+                        completed = (completionIndex + index) % 5 != 0
+                    )
+                )
+            }
+        }
+
+        repeat(25) { index ->
+            val noteId = whoAmINoteDao.insert(
+                WhoAmINote(
+                    title = "Demo Note ${index + 1}",
+                    content = "Reflection ${index + 1}: momentum improves when the next action is obvious.",
+                    sortOrder = whoAmINoteDao.getMaxSortOrder() + 1,
+                    createdAt = nowMillis - index * 10_000L
+                )
+            )
+            if (index % 5 == 0) {
+                whoAmINoteDao.updateContent(
+                    noteId = noteId,
+                    content = "Reflection ${index + 1}: momentum improves when the next action is obvious and scheduled."
+                )
+            }
+        }
+
+        val categories = listOf("Work", "Home", "Health", "Finance", "Learning", "Errands", "Social")
+        categories.forEach { addTaskCategory(it) }
+
+        repeat(70) { index ->
+            val isDone = index % 4 == 0
+            val category = categories[index % categories.size]
+            val hasOneTimeReminder = index % 3 == 0
+            val reminderEnabled = index % 2 == 0
+            val reminderDateTimesCsv = if (reminderEnabled && hasOneTimeReminder) {
+                listOf(
+                    nowMillis + (index + 2) * 60L * 60L * 1000L,
+                    nowMillis + (index + 30) * 60L * 60L * 1000L
+                ).joinToString("|")
+            } else {
+                null
+            }
+
+            taskDao.insert(
+                TaskItem(
+                    title = "Demo Task ${index + 1}",
+                    category = if (index % 9 == 0) DEFAULT_TASK_CATEGORY else category,
+                    isDone = isDone,
+                    completedAt = if (isDone) nowMillis - index * 3_600_000L else null,
+                    sortOrder = taskDao.getMaxSortOrderForDoneState(isDone) + 1,
+                    createdAt = nowMillis - index * 7_200_000L,
+                    reminderEnabled = reminderEnabled,
+                    reminderTime = if (reminderEnabled && !hasOneTimeReminder) listOf("09:15", "13:45", "20:30")[index % 3] else null,
+                    reminderDateTimesCsv = reminderDateTimesCsv,
+                    reminderMessage = if (reminderEnabled) "Demo reminder for task ${index + 1}" else null
+                )
+            )
+        }
+
+        repeat(18) { index ->
+            val goalDone = index % 3 == 0
+            val goalId = goalDao.insert(
+                Goal(
+                    title = "Demo Goal ${index + 1}",
+                    isDone = goalDone,
+                    completedAt = if (goalDone) nowMillis - index * 86_400_000L else null,
+                    sortOrder = goalDao.getMaxSortOrderForDoneState(goalDone) + 1,
+                    createdAt = nowMillis - index * 172_800_000L
+                )
+            )
+            repeat(4) { subIndex ->
+                val subDone = goalDone || subIndex < 2 || (index + subIndex) % 4 == 0
+                subGoalDao.insert(
+                    SubGoal(
+                        goalId = goalId,
+                        title = "Goal ${index + 1} step ${subIndex + 1}",
+                        isDone = subDone,
+                        completedAt = if (subDone) nowMillis - (index + subIndex) * 43_200_000L else null,
+                        createdAt = nowMillis - (index * 4L + subIndex) * 21_600_000L
+                    )
+                )
+            }
+        }
+
+        repeat(24) { index ->
+            val birthMonthDate = today.minusMonths((index % 12).toLong()).plusDays((index % 20).toLong())
+            val reminderCsv = if (index % 2 == 0) {
+                listOf(
+                    nowMillis + (index + 4) * 60L * 60L * 1000L,
+                    nowMillis + (index + 36) * 60L * 60L * 1000L
+                ).joinToString("|")
+            } else {
+                null
+            }
+            birthdayDao.insert(
+                Birthday(
+                    name = "Demo Birthday ${index + 1}",
+                    year = 1985 + (index % 20),
+                    month = birthMonthDate.monthValue,
+                    day = minOf(birthMonthDate.dayOfMonth, YearMonth.of(today.year, birthMonthDate.monthValue).lengthOfMonth()),
+                    reminderDateTimesCsv = reminderCsv,
+                    createdAt = nowMillis - index * 5_000L
+                )
+            )
+        }
+
+        if (seededHabitIds.isNotEmpty()) {
+            val spotlightHabitId = seededHabitIds.first()
+            listOf(
+                today.minusMonths(2).withDayOfMonth(3),
+                today.minusMonths(1).withDayOfMonth(17),
+                today.minusDays(2)
+            ).forEachIndexed { index, date ->
+                if (!date.isBefore(epochMillisToLocalDate(habitDao.getAllHabits().first { it.id == spotlightHabitId }.createdAt))) {
+                    habitDayNoteDao.upsert(
+                        HabitDayNote(
+                            habitId = spotlightHabitId,
+                            date = date.toString(),
+                            note = "Spotlight note ${index + 1} for historical calendar testing."
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     suspend fun reorderHabits(orderedHabitIds: List<Long>) {
         orderedHabitIds.forEachIndexed { index, habitId ->
             habitDao.updateSortOrder(habitId, index)

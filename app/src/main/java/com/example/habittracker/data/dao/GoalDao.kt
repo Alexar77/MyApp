@@ -16,7 +16,7 @@ interface GoalDao {
     suspend fun getMaxSortOrderForDoneState(isDone: Boolean): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insert(goal: Goal)
+    suspend fun insert(goal: Goal): Long
 
     @Query("UPDATE goals SET isDone = :isDone, completedAt = :completedAt WHERE id = :goalId")
     suspend fun updateDone(goalId: Long, isDone: Boolean, completedAt: Long?)

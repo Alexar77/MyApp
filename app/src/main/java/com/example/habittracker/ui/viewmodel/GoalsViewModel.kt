@@ -3,6 +3,7 @@ package com.example.habittracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.habittracker.repository.HabitRepository
+import com.example.habittracker.util.DebugLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,12 +35,14 @@ data class GoalsUiState(
 class GoalsViewModel @Inject constructor(
     private val repository: HabitRepository
 ) : ViewModel() {
+    private val logTag = "GoalsVM"
     private val mutableUiState = MutableStateFlow(GoalsUiState())
     val uiState: StateFlow<GoalsUiState> = mutableUiState.asStateFlow()
 
     init {
         viewModelScope.launch {
             repository.observeGoalsWithSubGoals().collect { goals ->
+                DebugLog.d(logTag, "flow update goals=${goals.size} subGoals=${goals.sumOf { it.subGoals.size }}")
                 mutableUiState.update {
                     GoalsUiState(
                         goals = goals.map { goal ->
@@ -60,47 +63,60 @@ class GoalsViewModel @Inject constructor(
                         }
                     )
                 }
+                DebugLog.d(logTag, "uiState publish goals=${mutableUiState.value.goals.size}")
             }
         }
     }
 
     fun addGoal(title: String) {
+        DebugLog.d(logTag, "addGoal titleLength=${title.length}")
         viewModelScope.launch { repository.addGoal(title) }
     }
 
     fun toggleGoal(goal: GoalUiItem) {
         val canMarkDone = goal.subGoals.all { it.isDone }
         val nextDone = !goal.isDone
-        if (nextDone && !canMarkDone) return
+        if (nextDone && !canMarkDone) {
+            DebugLog.d(logTag, "toggleGoal blocked goalId=${goal.id} incompleteSubGoals=${goal.subGoals.count { !it.isDone }}")
+            return
+        }
 
+        DebugLog.d(logTag, "toggleGoal goalId=${goal.id} nextDone=$nextDone")
         viewModelScope.launch { repository.setGoalDone(goal.id, nextDone) }
     }
 
     fun deleteGoal(goal: GoalUiItem) {
+        DebugLog.d(logTag, "deleteGoal goalId=${goal.id}")
         viewModelScope.launch { repository.deleteGoal(goal.id) }
     }
 
     fun renameGoal(goal: GoalUiItem, title: String) {
+        DebugLog.d(logTag, "renameGoal goalId=${goal.id} titleLength=${title.length}")
         viewModelScope.launch { repository.renameGoal(goal.id, title) }
     }
 
     fun addSubGoal(goalId: Long, title: String) {
+        DebugLog.d(logTag, "addSubGoal goalId=$goalId titleLength=${title.length}")
         viewModelScope.launch { repository.addSubGoal(goalId, title) }
     }
 
     fun toggleSubGoal(subGoal: SubGoalUiItem) {
+        DebugLog.d(logTag, "toggleSubGoal subGoalId=${subGoal.id} nextDone=${!subGoal.isDone}")
         viewModelScope.launch { repository.setSubGoalDone(subGoal.id, !subGoal.isDone) }
     }
 
     fun deleteSubGoal(subGoal: SubGoalUiItem) {
+        DebugLog.d(logTag, "deleteSubGoal subGoalId=${subGoal.id}")
         viewModelScope.launch { repository.deleteSubGoal(subGoal.id) }
     }
 
     fun renameSubGoal(subGoal: SubGoalUiItem, title: String) {
+        DebugLog.d(logTag, "renameSubGoal subGoalId=${subGoal.id} titleLength=${title.length}")
         viewModelScope.launch { repository.renameSubGoal(subGoal.id, title) }
     }
 
     fun moveGoal(goalId: Long, isDone: Boolean, direction: Int) {
+        DebugLog.d(logTag, "moveGoal goalId=$goalId isDone=$isDone direction=$direction")
         val sourceList = mutableUiState.value.goals.filter { it.isDone == isDone }
         val fromIndex = sourceList.indexOfFirst { it.id == goalId }
         if (fromIndex == -1) return

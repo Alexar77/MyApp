@@ -133,6 +133,32 @@ class MainViewModelTest {
         every { repository.observeAllHabitDayNotes() } returns MutableStateFlow(emptyList<com.example.habittracker.data.entity.HabitDayNote>())
         every { repository.observeBirthdays() } returns MutableStateFlow(emptyList<HabitRepository.BirthdayOption>())
         every { repository.observeReminderScheduleItems() } returns MutableStateFlow(emptyList<HabitRepository.ReminderScheduleItem>())
+        every { repository.observeSelectedHabitMonth(any(), any()) } answers {
+            MutableStateFlow(
+                HabitRepository.SelectedHabitMonthSnapshot(
+                    habitId = firstArg(),
+                    month = secondArg(),
+                    completedDates = emptySet(),
+                    scheduledDates = emptySet(),
+                    dayNotesByDate = emptyMap(),
+                    createdDate = LocalDate.of(2026, 3, 1)
+                )
+            )
+        }
+        every { repository.observeGlobalMonth(any()) } answers {
+            MutableStateFlow(
+                HabitRepository.GlobalMonthSnapshot(
+                    month = firstArg(),
+                    globalCompletedDates = emptySet(),
+                    globalScheduledDates = emptySet(),
+                    globalBirthdayDates = emptySet(),
+                    globalNoteDates = emptySet(),
+                    birthdayNamesByDate = emptyMap(),
+                    dayDetailsByDate = emptyMap(),
+                    businessToday = LocalDate.of(2026, 3, 7)
+                )
+            )
+        }
         every { repository.calculateScheduledDates(any(), any(), any(), any(), any()) } returns emptySet()
         every { repository.epochMillisToLocalDate(any()) } answers { LocalDate.of(2026, 3, 1) }
     }

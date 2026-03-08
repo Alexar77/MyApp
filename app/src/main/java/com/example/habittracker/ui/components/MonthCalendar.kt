@@ -28,6 +28,16 @@ import java.time.YearMonth
 
 private val CalendarCellShape = RoundedCornerShape(10.dp)
 
+private data class CalendarCellState(
+    val date: LocalDate?,
+    val dateKey: String?,
+    val isScheduled: Boolean,
+    val isCompleted: Boolean,
+    val isMissed: Boolean,
+    val hasBirthday: Boolean,
+    val hasNote: Boolean
+)
+
 @Composable
 fun MonthCalendar(
     month: YearMonth,
@@ -52,6 +62,22 @@ fun MonthCalendar(
             while (size % 7 != 0) add(null)
         }
     }
+    val cellStates = remember(month, completedDates, scheduledDates, birthdayDates, noteDates, todayDate) {
+        cells.map { date ->
+            val dateKey = date?.toString()
+            val isScheduled = dateKey != null && dateKey in scheduledDates
+            val isCompleted = isScheduled && dateKey in completedDates
+            CalendarCellState(
+                date = date,
+                dateKey = dateKey,
+                isScheduled = isScheduled,
+                isCompleted = isCompleted,
+                isMissed = date != null && isScheduled && !date.isAfter(todayDate) && !isCompleted,
+                hasBirthday = dateKey != null && dateKey in birthdayDates,
+                hasNote = dateKey != null && dateKey in noteDates
+            )
+        }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -65,28 +91,19 @@ fun MonthCalendar(
             }
         }
 
-        cells.chunked(7).forEach { week ->
+        cellStates.chunked(7).forEach { week ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                week.forEach { date ->
-                    val dateKey = date?.toString()
-                    val isScheduled = dateKey != null && dateKey in scheduledDates
-                    val isCompleted = isScheduled && dateKey in completedDates
-                    val isWithinTrackRange = date != null && isScheduled
-                    val isMissed = date != null &&
-                        isScheduled &&
-                        !date.isAfter(todayDate) &&
-                        !isCompleted
-
+                week.forEach { cellState ->
                     CalendarDayCell(
-                        date = date,
-                        completed = isCompleted,
-                        missed = isMissed,
-                        enabled = isWithinTrackRange,
-                        hasBirthday = dateKey != null && dateKey in birthdayDates,
-                        hasNote = dateKey != null && dateKey in noteDates,
+                        date = cellState.date,
+                        completed = cellState.isCompleted,
+                        missed = cellState.isMissed,
+                        enabled = cellState.isScheduled,
+                        hasBirthday = cellState.hasBirthday,
+                        hasNote = cellState.hasNote,
                         onToggleDate = onToggleDate,
                         onOpenDayNote = onOpenDayNote,
                         interactive = interactive,

@@ -18,6 +18,7 @@ import com.example.habittracker.data.entity.SubGoal
 import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
 import com.example.habittracker.data.entity.WhoAmINote
+import com.example.habittracker.util.DebugLog
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.system.measureTimeMillis
 
 @Singleton
 class HabitRepository @Inject constructor(
@@ -45,6 +47,8 @@ class HabitRepository @Inject constructor(
     private val subGoalDao: SubGoalDao,
     private val birthdayDao: BirthdayDao
 ) {
+    private val logTag = "Repository"
+
     companion object {
         const val DEFAULT_TASK_CATEGORY = "General"
     }
@@ -89,6 +93,33 @@ class HabitRepository @Inject constructor(
         val reminderDateTimesCsv: String?
     )
 
+    data class SelectedHabitMonthSnapshot(
+        val habitId: Long?,
+        val month: YearMonth,
+        val completedDates: Set<String>,
+        val scheduledDates: Set<String>,
+        val dayNotesByDate: Map<String, String>,
+        val createdDate: LocalDate?
+    )
+
+    data class GlobalDayDetailSnapshot(
+        val habitId: Long,
+        val habitName: String,
+        val isDone: Boolean,
+        val note: String?
+    )
+
+    data class GlobalMonthSnapshot(
+        val month: YearMonth,
+        val globalCompletedDates: Set<String>,
+        val globalScheduledDates: Set<String>,
+        val globalBirthdayDates: Set<String>,
+        val globalNoteDates: Set<String>,
+        val birthdayNamesByDate: Map<String, List<String>>,
+        val dayDetailsByDate: Map<String, List<GlobalDayDetailSnapshot>>,
+        val businessToday: LocalDate
+    )
+
     fun observeHabits(): Flow<List<HabitOption>> = habitDao.observeHabits().map { habits ->
         habits.map {
             HabitOption(
@@ -109,6 +140,13 @@ class HabitRepository @Inject constructor(
         completionDao.observeCompletionsForHabit(habitId).map { completions ->
             completions.asSequence().filter { it.completed }.map { it.date }.toSet()
         }.distinctUntilChanged()
+
+    fun observeCompletedDateStringsInRange(habitId: Long, month: YearMonth): Flow<Set<String>> {
+        val (startDate, endDate) = monthRange(month)
+        return completionDao.observeCompletionsForHabitInRange(habitId, startDate, endDate).map { completions ->
+            completions.asSequence().filter { it.completed }.map { it.date }.toSet()
+        }.distinctUntilChanged()
+    }
 
     fun observeAllCompletedDateStringsByHabit(): Flow<Map<Long, Set<String>>> =
         completionDao.observeAllCompletions().map { completions ->
@@ -152,8 +190,20 @@ class HabitRepository @Inject constructor(
             notes.associate { it.date to it.note }
         }.distinctUntilChanged()
 
+    fun observeHabitDayNotesInRange(habitId: Long, month: YearMonth): Flow<Map<String, String>> {
+        val (startDate, endDate) = monthRange(month)
+        return habitDayNoteDao.observeNotesForHabitInRange(habitId, startDate, endDate).map { notes ->
+            notes.associate { it.date to it.note }
+        }.distinctUntilChanged()
+    }
+
     fun observeAllHabitDayNotes(): Flow<List<HabitDayNote>> =
         habitDayNoteDao.observeAllNotes().distinctUntilChanged()
+
+    fun observeAllHabitDayNotesInRange(month: YearMonth): Flow<List<HabitDayNote>> {
+        val (startDate, endDate) = monthRange(month)
+        return habitDayNoteDao.observeNotesInRange(startDate, endDate).distinctUntilChanged()
+    }
 
     fun observeWhoAmINotes(): Flow<List<WhoAmINote>> =
         whoAmINoteDao.observeAll().distinctUntilChanged()
@@ -195,6 +245,149 @@ class HabitRepository @Inject constructor(
                 )
             }
         }.distinctUntilChanged()
+
+    fun observeSelectedHabitMonth(habitId: Long, month: YearMonth): Flow<SelectedHabitMonthSnapshot> {
+        val (startDate, endDate) = monthRange(month)
+        return combine(
+            habitDao.observeHabit(habitId),
+            completionDao.observeCompletionsForHabitInRange(habitId, startDate, endDate),
+            habitDayNoteDao.observeNotesForHabitInRange(habitId, startDate, endDate)
+        ) { habit, completions, notes ->
+            var snapshot: SelectedHabitMonthSnapshot? = null
+            val durationMs = measureTimeMillis {
+                val today = currentBusinessDate()
+                val createdDate = habit?.let { epochMillisToLocalDate(it.createdAt) }
+                val scheduledDates = if (habit == null || createdDate == null) {
+                    emptySet()
+                } else {
+                    calculateScheduledDatesInMonth(
+                        createdDate = createdDate,
+                        month = month,
+                        today = today,
+                        frequencyTypeValue = habit.frequencyType,
+                        frequencyIntervalDays = habit.frequencyIntervalDays,
+                        frequencyWeekdays = habit.frequencyWeekdays
+                    )
+                }
+
+                snapshot = SelectedHabitMonthSnapshot(
+                    habitId = habit?.id,
+                    month = month,
+                    completedDates = completions.asSequence()
+                        .filter { it.completed }
+                        .map { it.date }
+                        .toSet(),
+                    scheduledDates = scheduledDates,
+                    dayNotesByDate = notes.associate { it.date to it.note },
+                    createdDate = createdDate
+                )
+            }
+            DebugLog.d(
+                logTag,
+                "selected month snapshot month=$month habitId=$habitId completions=${completions.size} notes=${notes.size} scheduled=${snapshot?.scheduledDates?.size ?: 0} durationMs=$durationMs"
+            )
+            snapshot ?: SelectedHabitMonthSnapshot(
+                habitId = habit?.id,
+                month = month,
+                completedDates = emptySet(),
+                scheduledDates = emptySet(),
+                dayNotesByDate = emptyMap(),
+                createdDate = habit?.let { epochMillisToLocalDate(it.createdAt) }
+            )
+        }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+    }
+
+    fun observeGlobalMonth(month: YearMonth): Flow<GlobalMonthSnapshot> {
+        val (startDate, endDate) = monthRange(month)
+        return combine(
+            habitDao.observeHabits(),
+            completionDao.observeCompletionsInRange(startDate, endDate),
+            habitDayNoteDao.observeNotesInRange(startDate, endDate),
+            birthdayDao.observeAll()
+        ) { habits, completions, notes, birthdays ->
+            var snapshot: GlobalMonthSnapshot? = null
+            val durationMs = measureTimeMillis {
+                val today = currentBusinessDate()
+                val completedByHabit = completions.asSequence()
+                    .filter { it.completed }
+                    .groupBy(keySelector = { it.habitId }, valueTransform = { it.date })
+                    .mapValues { (_, dates) -> dates.toSet() }
+                val notesByHabitAndDate = notes.associate { (it.habitId to it.date) to it.note }
+                val dayScheduledCount = linkedMapOf<String, Int>()
+                val dayCompletionCount = linkedMapOf<String, Int>()
+                val dayDetails = linkedMapOf<String, MutableList<GlobalDayDetailSnapshot>>()
+
+                habits.forEach { habit ->
+                    val createdDate = epochMillisToLocalDate(habit.createdAt)
+                    val scheduledDates = calculateScheduledDatesInMonth(
+                        createdDate = createdDate,
+                        month = month,
+                        today = today,
+                        frequencyTypeValue = habit.frequencyType,
+                        frequencyIntervalDays = habit.frequencyIntervalDays,
+                        frequencyWeekdays = habit.frequencyWeekdays
+                    )
+                    val completedDates = completedByHabit[habit.id].orEmpty()
+                    scheduledDates.forEach { date ->
+                        dayScheduledCount[date] = (dayScheduledCount[date] ?: 0) + 1
+                        val isDone = completedDates.contains(date)
+                        if (isDone) {
+                            dayCompletionCount[date] = (dayCompletionCount[date] ?: 0) + 1
+                        }
+                        dayDetails.getOrPut(date) { mutableListOf() }
+                            .add(
+                                GlobalDayDetailSnapshot(
+                                    habitId = habit.id,
+                                    habitName = habit.name,
+                                    isDone = isDone,
+                                    note = notesByHabitAndDate[habit.id to date]
+                                )
+                            )
+                    }
+                }
+
+                val birthdayNamesByDate = birthdays
+                    .groupBy { birthdayOccurrenceInYear(it.month, it.day, month.year).toString() }
+                    .mapValues { (_, items) ->
+                        items.map { it.name }.sortedBy { it.lowercase() }
+                    }
+
+                snapshot = GlobalMonthSnapshot(
+                    month = month,
+                    globalCompletedDates = dayScheduledCount.keys.filter { date ->
+                        val scheduledCount = dayScheduledCount[date] ?: 0
+                        scheduledCount > 0 && (dayCompletionCount[date] ?: 0) == scheduledCount
+                    }.toSet(),
+                    globalScheduledDates = dayScheduledCount.keys.toSet(),
+                    globalBirthdayDates = birthdayNamesByDate.keys,
+                    globalNoteDates = notes.asSequence().map { it.date }.toSet(),
+                    birthdayNamesByDate = birthdayNamesByDate,
+                    dayDetailsByDate = dayDetails.mapValues { (_, items) ->
+                        items.sortedBy { it.habitName.lowercase() }
+                    },
+                    businessToday = today
+                )
+            }
+            DebugLog.d(
+                logTag,
+                "global month snapshot month=$month habits=${habits.size} completionRows=${completions.size} noteRows=${notes.size} birthdays=${birthdays.size} scheduledDays=${snapshot?.globalScheduledDates?.size ?: 0} durationMs=$durationMs"
+            )
+            snapshot ?: GlobalMonthSnapshot(
+                month = month,
+                globalCompletedDates = emptySet(),
+                globalScheduledDates = emptySet(),
+                globalBirthdayDates = emptySet(),
+                globalNoteDates = emptySet(),
+                birthdayNamesByDate = emptyMap(),
+                dayDetailsByDate = emptyMap(),
+                businessToday = currentBusinessDate()
+            )
+        }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+    }
 
     suspend fun getReminderScheduleItems(): List<ReminderScheduleItem> {
         val habits = habitDao.getAllHabits()
@@ -881,20 +1074,75 @@ class HabitRepository @Inject constructor(
         frequencyWeekdays: String?
     ): Set<String> {
         if (untilDate.isBefore(createdDate)) return emptySet()
-        return generateSequence(createdDate) { it.plusDays(1) }
-            .takeWhile { !it.isAfter(untilDate) }
-            .filter {
-                isScheduledOnDate(
-                    createdDate = createdDate,
-                    targetDate = it,
-                    frequencyTypeValue = frequencyTypeValue,
-                    frequencyIntervalDays = frequencyIntervalDays,
-                    frequencyWeekdays = frequencyWeekdays
-                )
-            }
-            .map(LocalDate::toString)
-            .toSet()
+        var currentMonth = YearMonth.from(createdDate)
+        val finalMonth = YearMonth.from(untilDate)
+        val results = linkedSetOf<String>()
+        while (!currentMonth.isAfter(finalMonth)) {
+            results += calculateScheduledDatesInMonth(
+                createdDate = createdDate,
+                month = currentMonth,
+                today = untilDate,
+                frequencyTypeValue = frequencyTypeValue,
+                frequencyIntervalDays = frequencyIntervalDays,
+                frequencyWeekdays = frequencyWeekdays
+            )
+            currentMonth = currentMonth.plusMonths(1)
+        }
+        return results
     }
+
+    fun calculateScheduledDatesInMonth(
+        createdDate: LocalDate,
+        month: YearMonth,
+        today: LocalDate,
+        frequencyTypeValue: String,
+        frequencyIntervalDays: Int?,
+        frequencyWeekdays: String?
+    ): Set<String> {
+        val monthStart = month.atDay(1)
+        val monthEnd = month.atEndOfMonth()
+        val rangeStart = maxOf(createdDate, monthStart)
+        val rangeEnd = minOf(monthEnd, today)
+        if (rangeEnd.isBefore(rangeStart)) return emptySet()
+
+        return when (parseFrequencyType(frequencyTypeValue)) {
+            HabitFrequencyType.DAILY -> generateDateRange(rangeStart, rangeEnd).map(LocalDate::toString).toSet()
+            HabitFrequencyType.WEEKLY -> {
+                val weekdays = parseWeekdaySet(frequencyWeekdays)
+                if (weekdays.isEmpty()) {
+                    emptySet()
+                } else {
+                    generateDateRange(rangeStart, rangeEnd)
+                        .filter { weekdays.contains(it.dayOfWeek.value) }
+                        .map(LocalDate::toString)
+                        .toSet()
+                }
+            }
+            HabitFrequencyType.EVERY_N_DAYS -> {
+                val interval = normalizeFrequencyInterval(HabitFrequencyType.EVERY_N_DAYS.name, frequencyIntervalDays) ?: 1
+                val daysFromCreated = rangeStart.toEpochDay() - createdDate.toEpochDay()
+                val remainder = Math.floorMod(daysFromCreated, interval.toLong())
+                val offset = if (remainder == 0L) 0L else interval - remainder
+                val firstDate = rangeStart.plusDays(offset)
+                if (firstDate.isAfter(rangeEnd)) {
+                    emptySet()
+                } else {
+                    generateSequence(firstDate) { it.plusDays(interval.toLong()) }
+                        .takeWhile { !it.isAfter(rangeEnd) }
+                        .map(LocalDate::toString)
+                        .toSet()
+                }
+            }
+        }
+    }
+
+    private fun monthRange(month: YearMonth): Pair<String, String> =
+        month.atDay(1).toString() to month.atEndOfMonth().toString()
+
+    private fun generateDateRange(start: LocalDate, end: LocalDate): Sequence<LocalDate> =
+        generateSequence(start) { current ->
+            current.plusDays(1).takeUnless { it.isAfter(end) }
+        }
 
     private fun buildScheduleItems(
         habits: List<Habit>,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
+import com.example.habittracker.util.DebugLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import java.time.YearMonth
@@ -13,11 +14,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -47,7 +50,8 @@ data class MainUiState(
     val globalCurrentStreak: Int = 0,
     val dayNotesByDate: Map<String, String> = emptyMap(),
     val selectedHabitCreatedDate: LocalDate? = null,
-    val businessToday: LocalDate
+    val businessToday: LocalDate,
+    val isDataLoaded: Boolean = false
 )
 
 data class GlobalHabitDayDetail(
@@ -68,9 +72,11 @@ class MainViewModel @Inject constructor(
     private val habitRepository: HabitRepository,
     private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
+    private val logTag = "MainVM"
 
     private val selectedHabitIdFlow = MutableStateFlow<Long?>(null)
     private val selectedMonthFlow = MutableStateFlow(YearMonth.from(habitRepository.currentBusinessDate()))
+    private val habitsStateFlow = MutableStateFlow<List<HabitOptionUiState>>(emptyList())
 
     private val mutableUiState = MutableStateFlow(
         MainUiState(
@@ -80,198 +86,153 @@ class MainViewModel @Inject constructor(
     )
     val uiState: StateFlow<MainUiState> = mutableUiState.asStateFlow()
     @Volatile
-    private var allCompletedByHabitCache: Map<Long, Set<String>> = emptyMap()
+    private var globalDayDetailsCache: Map<String, List<HabitRepository.GlobalDayDetailSnapshot>> = emptyMap()
     @Volatile
-    private var birthdaysCache: List<HabitRepository.BirthdayOption> = emptyList()
+    private var globalBirthdayNamesByDateCache: Map<String, List<String>> = emptyMap()
     @Volatile
-    private var allHabitDayNotesByKeyCache: Map<Pair<Long, String>, String> = emptyMap()
+    private var hasReceivedHabitSnapshot = false
+    @Volatile
+    private var pendingHabitOrderIds: List<Long>? = null
     private var habitReorderJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            combine(habitRepository.observeHabits(), habitRepository.observeCurrentStreaks()) { habitOptions, streaks ->
-                val habitUiOptions = habitOptions.map {
-                    HabitOptionUiState(
-                        id = it.id,
-                        name = it.name,
-                        createdAt = it.createdAt,
-                        frequencyType = it.frequencyType,
-                        frequencyIntervalDays = it.frequencyIntervalDays,
-                        frequencyWeekdays = it.frequencyWeekdays,
-                        reminderEnabled = it.reminderEnabled,
-                        reminderTime = it.reminderTime,
-                        reminderMessage = it.reminderMessage,
-                        currentStreak = streaks[it.id] ?: 0
-                    )
-                }
-                habitUiOptions
-            }.collect { habitUiOptions ->
-                mutableUiState.update { currentState -> currentState.copy(habits = habitUiOptions) }
+        val habitsFlow = combine(
+            habitRepository.observeHabits(),
+            habitRepository.observeCurrentStreaks()
+        ) { habitOptions, streaks ->
+            habitOptions.map {
+                HabitOptionUiState(
+                    id = it.id,
+                    name = it.name,
+                    createdAt = it.createdAt,
+                    frequencyType = it.frequencyType,
+                    frequencyIntervalDays = it.frequencyIntervalDays,
+                    frequencyWeekdays = it.frequencyWeekdays,
+                    reminderEnabled = it.reminderEnabled,
+                    reminderTime = it.reminderTime,
+                    reminderMessage = it.reminderMessage,
+                    currentStreak = streaks[it.id] ?: 0
+                )
+            }
+        }.shareIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            replay = 1
+        )
 
+        viewModelScope.launch {
+            habitsFlow.collect { habitUiOptions ->
+                val orderedHabitUiOptions = pendingHabitOrderIds?.let { pendingOrder ->
+                    val byId = habitUiOptions.associateBy { it.id }
+                    val reordered = pendingOrder.mapNotNull(byId::get)
+                    if (reordered.size == habitUiOptions.size) reordered else habitUiOptions
+                } ?: habitUiOptions
+                hasReceivedHabitSnapshot = true
+                habitsStateFlow.value = orderedHabitUiOptions
                 val currentlySelectedHabitId = selectedHabitIdFlow.value
                 val selectionStillValid = currentlySelectedHabitId != null &&
-                    habitUiOptions.any { it.id == currentlySelectedHabitId }
-
+                    orderedHabitUiOptions.any { it.id == currentlySelectedHabitId }
+                val resolvedSelectedHabitId = if (selectionStillValid) {
+                    currentlySelectedHabitId
+                } else {
+                    orderedHabitUiOptions.firstOrNull()?.id
+                }
+                DebugLog.d(
+                    logTag,
+                    "habit options update count=${orderedHabitUiOptions.size} selected=$currentlySelectedHabitId resolved=$resolvedSelectedHabitId pendingOrder=${pendingHabitOrderIds?.size ?: 0}"
+                )
                 if (!selectionStillValid) {
-                    selectedHabitIdFlow.value = habitUiOptions.firstOrNull()?.id
+                    DebugLog.d(
+                        logTag,
+                        "selection invalid old=$currentlySelectedHabitId new=$resolvedSelectedHabitId"
+                    )
+                    selectedHabitIdFlow.value = resolvedSelectedHabitId
                 }
             }
         }
 
         viewModelScope.launch(Dispatchers.Default) {
-            val completionDatesFlow = selectedHabitIdFlow.flatMapLatest { selectedId ->
-                if (selectedId == null) flowOf(emptySet()) else habitRepository.observeCompletedDateStrings(selectedId)
-            }
-            val dayNotesFlow = selectedHabitIdFlow.flatMapLatest { selectedId ->
-                if (selectedId == null) flowOf(emptyMap()) else habitRepository.observeHabitDayNotes(selectedId)
-            }
-            val allCompletionsByHabitFlow = habitRepository.observeAllCompletedDateStringsByHabit()
-            val allDayNotesFlow = habitRepository.observeAllHabitDayNotes()
-            val birthdaysFlow = habitRepository.observeBirthdays()
-            val allCompletionsAndNotesFlow = combine(
-                allCompletionsByHabitFlow,
-                allDayNotesFlow
-            ) { allCompletedDateMap, allDayNotes ->
-                allCompletedDateMap to allDayNotes
+            val selectedHabitSnapshotFlow = combine(selectedHabitIdFlow, selectedMonthFlow) { selectedId, selectedMonth ->
+                selectedId to selectedMonth
+            }.flatMapLatest { (selectedId, selectedMonth) ->
+                if (selectedId == null) {
+                    flowOf(
+                        HabitRepository.SelectedHabitMonthSnapshot(
+                            habitId = null,
+                            month = selectedMonth,
+                            completedDates = emptySet(),
+                            scheduledDates = emptySet(),
+                            dayNotesByDate = emptyMap(),
+                            createdDate = null
+                        )
+                    )
+                } else {
+                    habitRepository.observeSelectedHabitMonth(selectedId, selectedMonth)
+                }
             }
 
-            val combinedMainStateFlow = combine(
+            val globalMonthSnapshotFlow = selectedMonthFlow.flatMapLatest { selectedMonth ->
+                habitRepository.observeGlobalMonth(selectedMonth)
+            }
+
+            combine(
+                habitsStateFlow,
                 selectedHabitIdFlow,
                 selectedMonthFlow,
-                completionDatesFlow,
-                dayNotesFlow,
-                allCompletionsAndNotesFlow
-            ) {
-                    selectedId,
-                    selectedYearMonth,
-                    completedDateSet,
-                    dayNotesMap,
-                    allCompletionsAndNotes ->
-                val allCompletedDateMap = allCompletionsAndNotes.first
-                val allDayNotes = allCompletionsAndNotes.second
-                val currentHabits = mutableUiState.value.habits
-                val selectedHabit = currentHabits.firstOrNull { it.id == selectedId }
-                val monthStart = selectedYearMonth.atDay(1)
-                val monthEnd = selectedYearMonth.atEndOfMonth()
-                val today = habitRepository.currentBusinessDate()
-                allCompletedByHabitCache = allCompletedDateMap
-                allHabitDayNotesByKeyCache = allDayNotes.associate { (it.habitId to it.date) to it.note }
-                val scheduledDates = selectedHabit?.let {
-                    val createdDate = habitRepository.epochMillisToLocalDate(it.createdAt)
-                    val untilDate = minOf(monthEnd, today)
-                    habitRepository.calculateScheduledDates(
-                        createdDate = createdDate,
-                        untilDate = untilDate,
-                        frequencyTypeValue = it.frequencyType,
-                        frequencyIntervalDays = it.frequencyIntervalDays,
-                        frequencyWeekdays = it.frequencyWeekdays
-                    ).filter { dateText ->
-                        runCatching {
-                            val day = LocalDate.parse(dateText)
-                            !day.isBefore(monthStart) && !day.isAfter(monthEnd)
-                        }.getOrDefault(false)
-                    }.toSet()
-                } ?: emptySet()
-
-                val untilDate = minOf(monthEnd, today)
-                val dayCompletionCount = linkedMapOf<String, Int>()
-                val dayScheduledCount = linkedMapOf<String, Int>()
-                currentHabits.forEach { habit ->
-                    val createdDate = habitRepository.epochMillisToLocalDate(habit.createdAt)
-                    val scheduled = habitRepository.calculateScheduledDates(
-                        createdDate = createdDate,
-                        untilDate = untilDate,
-                        frequencyTypeValue = habit.frequencyType,
-                        frequencyIntervalDays = habit.frequencyIntervalDays,
-                        frequencyWeekdays = habit.frequencyWeekdays
-                    ).filter { dateText ->
-                        runCatching {
-                            val day = LocalDate.parse(dateText)
-                            !day.isBefore(monthStart) && !day.isAfter(monthEnd)
-                        }.getOrDefault(false)
-                    }
-                    val completed = allCompletedDateMap[habit.id].orEmpty()
-                    scheduled.forEach { dateText ->
-                        dayScheduledCount[dateText] = (dayScheduledCount[dateText] ?: 0) + 1
-                        if (completed.contains(dateText)) {
-                            dayCompletionCount[dateText] = (dayCompletionCount[dateText] ?: 0) + 1
-                        }
-                    }
-                }
-                val globalScheduledDates = dayScheduledCount.keys
-                val globalCompletedDates = globalScheduledDates.filter { dateText ->
-                    val scheduledCount = dayScheduledCount[dateText] ?: 0
-                    scheduledCount > 0 && (dayCompletionCount[dateText] ?: 0) == scheduledCount
-                }.toSet()
-                val globalNoteDates = allDayNotes.asSequence()
-                    .map { it.date }
-                    .filter { dateText ->
-                        runCatching {
-                            val day = LocalDate.parse(dateText)
-                            !day.isBefore(monthStart) && !day.isAfter(monthEnd)
-                        }.getOrDefault(false)
-                    }
-                    .toSet()
-                val globalCurrentStreak = calculateGlobalStreak(
-                    habits = currentHabits,
-                    allCompletedDateMap = allCompletedDateMap,
-                    today = today
-                )
-                MainUiState(
-                    habits = currentHabits,
-                    selectedHabitId = selectedId,
-                    selectedMonth = selectedYearMonth,
-                    completedDates = completedDateSet,
-                    scheduledDates = scheduledDates,
-                    globalCompletedDates = globalCompletedDates,
-                    globalScheduledDates = globalScheduledDates.toSet(),
-                    globalBirthdayDates = emptySet(),
-                    globalNoteDates = globalNoteDates,
-                    globalCurrentStreak = globalCurrentStreak,
-                    dayNotesByDate = dayNotesMap,
-                    selectedHabitCreatedDate = selectedHabit?.let {
-                        habitRepository.epochMillisToLocalDate(it.createdAt)
-                    },
-                    businessToday = today
-                )
-            }
-
-            combine(combinedMainStateFlow, birthdaysFlow) { combinedState, birthdays ->
-                birthdaysCache = birthdays
-                combinedState.copy(
-                    globalBirthdayDates = birthdays.map { birthday ->
-                        habitRepository.birthdayOccurrenceInYear(
-                            month = birthday.month,
-                            day = birthday.day,
-                            year = combinedState.selectedMonth.year
-                        ).toString()
-                    }.toSet()
-                )
-            }.collect { combinedState ->
-                mutableUiState.update { currentState ->
-                    currentState.copy(
-                        selectedHabitId = combinedState.selectedHabitId,
-                        selectedMonth = combinedState.selectedMonth,
-                        completedDates = combinedState.completedDates,
-                        scheduledDates = combinedState.scheduledDates,
-                        globalCompletedDates = combinedState.globalCompletedDates,
-                        globalScheduledDates = combinedState.globalScheduledDates,
-                        globalBirthdayDates = combinedState.globalBirthdayDates,
-                        globalNoteDates = combinedState.globalNoteDates,
-                        globalCurrentStreak = combinedState.globalCurrentStreak,
-                        dayNotesByDate = combinedState.dayNotesByDate,
-                        selectedHabitCreatedDate = combinedState.selectedHabitCreatedDate,
-                        businessToday = combinedState.businessToday
+                selectedHabitSnapshotFlow,
+                globalMonthSnapshotFlow
+            ) { habits, selectedHabitId, selectedMonth, selectedSnapshot, globalSnapshot ->
+                val businessToday = globalSnapshot.businessToday
+                val selectedStateIsReady = selectedHabitId == null || selectedSnapshot.habitId == selectedHabitId
+                if (!selectedStateIsReady) {
+                    DebugLog.d(
+                        logTag,
+                        "uiState publish skipped staleSelectedSnapshot month=$selectedMonth selected=$selectedHabitId snapshot=${selectedSnapshot.habitId}"
                     )
+                    return@combine null
                 }
+
+                val uiState = MainUiState(
+                    habits = habits,
+                    selectedHabitId = selectedHabitId,
+                    selectedMonth = selectedMonth,
+                    completedDates = selectedSnapshot.completedDates,
+                    scheduledDates = selectedSnapshot.scheduledDates,
+                    globalCompletedDates = globalSnapshot.globalCompletedDates,
+                    globalScheduledDates = globalSnapshot.globalScheduledDates,
+                    globalBirthdayDates = globalSnapshot.globalBirthdayDates,
+                    globalNoteDates = globalSnapshot.globalNoteDates,
+                    globalCurrentStreak = 0,
+                    dayNotesByDate = selectedSnapshot.dayNotesByDate,
+                    selectedHabitCreatedDate = selectedSnapshot.createdDate,
+                    businessToday = businessToday,
+                    isDataLoaded = hasReceivedHabitSnapshot
+                )
+                uiState to globalSnapshot
+            }.collect { combinedResult ->
+                if (combinedResult == null) return@collect
+
+                val combinedState = combinedResult.first
+                val globalSnapshot = combinedResult.second
+                if (combinedState.habits.isNotEmpty() && combinedState.selectedHabitId == null) {
+                    DebugLog.d(
+                        logTag,
+                        "uiState publish skipped missingSelection month=${combinedState.selectedMonth} habits=${combinedState.habits.size}"
+                    )
+                    return@collect
+                }
+
+                globalDayDetailsCache = globalSnapshot.dayDetailsByDate
+                globalBirthdayNamesByDateCache = globalSnapshot.birthdayNamesByDate
+
+                DebugLog.d(
+                    logTag,
+                    "uiState publish month=${combinedState.selectedMonth} selected=${combinedState.selectedHabitId} habits=${combinedState.habits.size} loaded=${combinedState.isDataLoaded}"
+                )
+                mutableUiState.value = combinedState
             }
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            habitRepository.observeReminderScheduleItems().collect { reminders ->
-                reminderScheduler.rescheduleAll(reminders)
-            }
-        }
     }
 
     fun addHabit(
@@ -284,15 +245,25 @@ class MainViewModel @Inject constructor(
         reminderTime: String?,
         reminderMessage: String?
     ): Boolean {
+        DebugLog.d(
+            logTag,
+            "addHabit requested nameLength=${habitName.length} createdDateText=$createdDateText frequency=$frequencyType weekdays=${frequencyWeekdays.size} reminderEnabled=$reminderEnabled"
+        )
         val createdAtMillis = createdDateText
             ?.takeIf { it.isNotBlank() }
             ?.let {
                 runCatching {
                     val parsed = LocalDate.parse(it)
                     habitRepository.localDateToEpochMillis(parsed)
-                }.getOrNull() ?: return false
+                }.getOrNull() ?: run {
+                    DebugLog.d(logTag, "addHabit rejected invalid createdDateText=$createdDateText")
+                    return false
+                }
             }
-        if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) return false
+        if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) {
+            DebugLog.d(logTag, "addHabit rejected invalid reminderTime=$reminderTime")
+            return false
+        }
 
         viewModelScope.launch {
             habitRepository.createHabit(
@@ -305,6 +276,8 @@ class MainViewModel @Inject constructor(
                 reminderTime = reminderTime,
                 reminderMessage = reminderMessage
             )
+            rescheduleReminders("addHabit")
+            DebugLog.d(logTag, "addHabit completed name=$habitName")
         }
         return true
     }
@@ -319,7 +292,11 @@ class MainViewModel @Inject constructor(
         reminderMessage: String?
     ): Boolean {
         val selectedId = selectedHabitIdFlow.value ?: return false
-        if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) return false
+        if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) {
+            DebugLog.d(logTag, "updateSelectedHabit rejected invalid reminderTime=$reminderTime selectedId=$selectedId")
+            return false
+        }
+        DebugLog.d(logTag, "updateSelectedHabit selectedId=$selectedId frequency=$frequencyType reminderEnabled=$reminderEnabled")
         viewModelScope.launch {
             habitRepository.updateHabit(
                 habitId = selectedId,
@@ -331,16 +308,20 @@ class MainViewModel @Inject constructor(
                 reminderTime = reminderTime,
                 reminderMessage = reminderMessage
             )
+            rescheduleReminders("updateSelectedHabit")
+            DebugLog.d(logTag, "updateSelectedHabit completed selectedId=$selectedId")
         }
         return true
     }
 
     fun selectHabit(habitId: Long) {
+        DebugLog.d(logTag, "selectHabit habitId=$habitId")
         selectedHabitIdFlow.value = habitId
     }
 
     fun moveHabit(habitId: Long, direction: Int) {
-        val habits = mutableUiState.value.habits
+        DebugLog.d(logTag, "moveHabit habitId=$habitId direction=$direction")
+        val habits = habitsStateFlow.value
         val fromIndex = habits.indexOfFirst { it.id == habitId }
         if (fromIndex == -1) return
 
@@ -350,49 +331,62 @@ class MainViewModel @Inject constructor(
         val reordered = habits.toMutableList().apply {
             add(toIndex, removeAt(fromIndex))
         }
+        pendingHabitOrderIds = reordered.map { it.id }
 
         // Update UI immediately
+        habitsStateFlow.value = reordered
         mutableUiState.update { it.copy(habits = reordered) }
 
         // Debounce DB write
         habitReorderJob?.cancel()
         habitReorderJob = viewModelScope.launch {
             delay(300)
+            DebugLog.d(logTag, "persist habit reorder count=${reordered.size}")
             habitRepository.reorderHabits(reordered.map { it.id })
+            pendingHabitOrderIds = null
         }
     }
 
     fun deleteSelectedHabit() {
         val selectedId = selectedHabitIdFlow.value ?: return
+        DebugLog.d(logTag, "deleteSelectedHabit selectedId=$selectedId")
         viewModelScope.launch {
             habitRepository.deleteHabit(selectedId)
-            reminderScheduler.rescheduleAll(habitRepository.getReminderScheduleItems())
+            rescheduleReminders("deleteSelectedHabit")
         }
     }
 
     fun seedTestData() {
+        DebugLog.d(logTag, "seedTestData requested")
         viewModelScope.launch {
             habitRepository.seedTestData()
-            reminderScheduler.rescheduleAll(habitRepository.getReminderScheduleItems())
+            rescheduleReminders("seedTestData")
+            DebugLog.d(logTag, "seedTestData completed")
         }
     }
 
     fun showPreviousMonth() {
+        DebugLog.d(logTag, "showPreviousMonth from=${selectedMonthFlow.value}")
         selectedMonthFlow.update { currentMonth -> currentMonth.minusMonths(1) }
     }
 
     fun showNextMonth() {
+        DebugLog.d(logTag, "showNextMonth from=${selectedMonthFlow.value}")
         selectedMonthFlow.update { currentMonth -> currentMonth.plusMonths(1) }
     }
 
     fun toggleDay(date: String) {
         val selectedId = selectedHabitIdFlow.value ?: return
+        DebugLog.d(logTag, "toggleDay date=$date selectedId=$selectedId")
         val uiStateSnapshot = mutableUiState.value
         val selectedHabit = uiStateSnapshot.habits.firstOrNull { it.id == selectedId } ?: return
         val createdDate = habitRepository.epochMillisToLocalDate(selectedHabit.createdAt)
         val targetDate = runCatching { LocalDate.parse(date) }.getOrNull() ?: return
         val today = habitRepository.currentBusinessDate()
-        if (targetDate.isBefore(createdDate) || targetDate.isAfter(today)) return
+        if (targetDate.isBefore(createdDate) || targetDate.isAfter(today)) {
+            DebugLog.d(logTag, "toggleDay rejected outOfRange date=$date createdDate=$createdDate today=$today")
+            return
+        }
         val scheduled = habitRepository.isScheduledOnDate(
             createdDate = createdDate,
             targetDate = targetDate,
@@ -400,12 +394,19 @@ class MainViewModel @Inject constructor(
             frequencyIntervalDays = selectedHabit.frequencyIntervalDays,
             frequencyWeekdays = selectedHabit.frequencyWeekdays
         )
-        if (!scheduled) return
-        viewModelScope.launch { habitRepository.toggleCompletion(selectedId, date) }
+        if (!scheduled) {
+            DebugLog.d(logTag, "toggleDay rejected unscheduled date=$date selectedId=$selectedId")
+            return
+        }
+        viewModelScope.launch {
+            habitRepository.toggleCompletion(selectedId, date)
+            DebugLog.d(logTag, "toggleDay completed date=$date selectedId=$selectedId")
+        }
     }
 
     fun saveDayNote(date: String, note: String) {
         val selectedId = selectedHabitIdFlow.value ?: return
+        DebugLog.d(logTag, "saveDayNote selectedId=$selectedId date=$date noteLength=${note.length}")
         viewModelScope.launch { habitRepository.saveHabitDayNote(selectedId, date, note) }
     }
 
@@ -420,83 +421,27 @@ class MainViewModel @Inject constructor(
     fun parseReminderTimesCsv(value: String?): List<String> = habitRepository.parseReminderTimesCsv(value)
 
     fun getGlobalDayDetails(date: String): GlobalDayDetails? {
-        val targetDate = runCatching { LocalDate.parse(date) }.getOrNull() ?: return null
-        val habits = mutableUiState.value.habits
-            .mapNotNull { habit ->
-                val createdDate = habitRepository.epochMillisToLocalDate(habit.createdAt)
-                val scheduled = habitRepository.isScheduledOnDate(
-                    createdDate = createdDate,
-                    targetDate = targetDate,
-                    frequencyTypeValue = habit.frequencyType,
-                    frequencyIntervalDays = habit.frequencyIntervalDays,
-                    frequencyWeekdays = habit.frequencyWeekdays
-                )
-                if (!scheduled) return@mapNotNull null
-                GlobalHabitDayDetail(
-                    habitName = habit.name,
-                    isDone = allCompletedByHabitCache[habit.id].orEmpty().contains(date),
-                    note = allHabitDayNotesByKeyCache[habit.id to date]
-                )
-            }
-            .sortedBy { it.habitName.lowercase() }
-
-        val birthdays = birthdaysCache
-            .filter { birthday ->
-                habitRepository.birthdayOccurrenceInYear(
-                    month = birthday.month,
-                    day = birthday.day,
-                    year = targetDate.year
-                ) == targetDate
-            }
-            .map { it.name }
-            .sortedBy { it.lowercase() }
-
-        return GlobalDayDetails(
+        runCatching { LocalDate.parse(date) }.getOrNull() ?: return null
+        val habits = globalDayDetailsCache[date].orEmpty().map { detail ->
+            GlobalHabitDayDetail(
+                habitName = detail.habitName,
+                isDone = detail.isDone,
+                note = detail.note
+            )
+        }
+        val birthdays = globalBirthdayNamesByDateCache[date].orEmpty()
+        val result = GlobalDayDetails(
             date = date,
             habits = habits,
             birthdayNames = birthdays
         )
+        DebugLog.d(logTag, "getGlobalDayDetails date=$date habits=${result.habits.size} birthdays=${result.birthdayNames.size}")
+        return result
     }
 
-    private fun calculateGlobalStreak(
-        habits: List<HabitOptionUiState>,
-        allCompletedDateMap: Map<Long, Set<String>>,
-        today: LocalDate
-    ): Int {
-        if (habits.isEmpty()) return 0
-        val createdByHabit = habits.associate { habit ->
-            habit.id to habitRepository.epochMillisToLocalDate(habit.createdAt)
-        }
-        val earliestCreatedDate = createdByHabit.values.minOrNull() ?: return 0
-
-        var streak = 0
-        var cursor = today
-        while (!cursor.isBefore(earliestCreatedDate)) {
-            val scheduledHabits = habits.filter { habit ->
-                val createdDate = createdByHabit[habit.id] ?: return@filter false
-                habitRepository.isScheduledOnDate(
-                    createdDate = createdDate,
-                    targetDate = cursor,
-                    frequencyTypeValue = habit.frequencyType,
-                    frequencyIntervalDays = habit.frequencyIntervalDays,
-                    frequencyWeekdays = habit.frequencyWeekdays
-                )
-            }
-
-            if (scheduledHabits.isEmpty()) {
-                cursor = cursor.minusDays(1)
-                continue
-            }
-
-            val allCompleted = scheduledHabits.all { habit ->
-                allCompletedDateMap[habit.id].orEmpty().contains(cursor.toString())
-            }
-            if (!allCompleted) break
-
-            streak += 1
-            cursor = cursor.minusDays(1)
-        }
-
-        return streak
+    private suspend fun rescheduleReminders(reason: String) {
+        val reminders = habitRepository.getReminderScheduleItems()
+        DebugLog.d(logTag, "rescheduleReminders reason=$reason count=${reminders.size}")
+        reminderScheduler.rescheduleAll(reminders)
     }
 }

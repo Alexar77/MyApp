@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.util.DebugLog
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
@@ -68,6 +69,12 @@ import kotlinx.coroutines.delay
 @Composable
 fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(state.notes.size, state.selectedNoteId, state.savingNoteId) {
+        DebugLog.d(
+            "WhoAmIScreen",
+            "state notes=${state.notes.size} selected=${state.selectedNoteId} saving=${state.savingNoteId}"
+        )
+    }
     val clipboardManager = LocalClipboardManager.current
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }

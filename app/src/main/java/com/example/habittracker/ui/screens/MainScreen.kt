@@ -8,14 +8,15 @@ import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -64,11 +66,16 @@ import com.example.habittracker.ui.components.MonthCalendar
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.GlobalDayDetails
 import com.example.habittracker.ui.viewmodel.MainViewModel
+import com.example.habittracker.util.DebugLog
 import com.example.habittracker.repository.HabitRepository.HabitFrequencyType
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+private data class MainScreenHeaderState(
+    val monthLabel: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +85,25 @@ fun MainScreen(
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    val headerState = remember(screenState.selectedMonth) {
+        MainScreenHeaderState(
+            monthLabel = screenState.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+        )
+    }
+    LaunchedEffect(
+        screenState.habits.size,
+        screenState.selectedHabitId,
+        screenState.selectedMonth,
+        screenState.completedDates.size,
+        screenState.scheduledDates.size,
+        screenState.globalCompletedDates.size,
+        screenState.globalScheduledDates.size
+    ) {
+        DebugLog.d(
+            "MainScreen",
+            "state habits=${screenState.habits.size} selected=${screenState.selectedHabitId} month=${screenState.selectedMonth} scheduled=${screenState.scheduledDates.size} completed=${screenState.completedDates.size} globalScheduled=${screenState.globalScheduledDates.size}"
+        )
+    }
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var habitNameInput by rememberSaveable { mutableStateOf("") }
@@ -182,7 +208,9 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (screenState.habits.isEmpty()) {
+            if (!screenState.isDataLoaded) {
+                HomeLoadingState()
+            } else if (screenState.habits.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -202,50 +230,14 @@ fun MainScreen(
                     )
                 }
             } else {
-                Column(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    run {
-                        Text(
-                            text = "All habits 🔥 ${screenState.globalCurrentStreak}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    run {
-                        Surface(
-                            tonalElevation = 2.dp,
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                MonthCalendar(
-                                    month = screenState.selectedMonth,
-                                    completedDates = screenState.globalCompletedDates,
-                                    scheduledDates = screenState.globalScheduledDates,
-                                    birthdayDates = screenState.globalBirthdayDates,
-                                    noteDates = screenState.globalNoteDates,
-                                    todayDate = screenState.businessToday,
-                                    onToggleDate = { date ->
-                                        globalDayDetails = viewModel.getGlobalDayDetails(date)
-                                        isGlobalDayDetailsDialogVisible = true
-                                    },
-                                    onOpenDayNote = { },
-                                    interactive = true
-                                )
-                            }
-                        }
-                    }
-
-                    run {
+                    item {
                         Text(
                             text = "Select habit",
                             style = MaterialTheme.typography.labelLarge,
@@ -253,16 +245,13 @@ fun MainScreen(
                         )
                     }
 
-                    run {
+                    item {
                         var draggingHabitId by remember { mutableStateOf<Long?>(null) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            screenState.habits.forEach { habitOption ->
-                                key(habitOption.id) {
+                            items(screenState.habits, key = { it.id }) { habitOption ->
                                 val isSelectedHabit = screenState.selectedHabitId == habitOption.id
                                 val isDragging = draggingHabitId == habitOption.id
                                 var dragOffsetX by remember(habitOption.id) { mutableFloatStateOf(0f) }
@@ -311,12 +300,21 @@ fun MainScreen(
                                             )
                                         }
                                 )
-                                }
                             }
                         }
                     }
 
-                    run {
+                    item {
+                        Text(
+                            text = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }?.let { habit ->
+                                "${habit.name} \uD83D\uDD25 ${habit.currentStreak}"
+                            } ?: "Selected habit",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    item {
                         Surface(
                             tonalElevation = 2.dp,
                             shape = MaterialTheme.shapes.large,
@@ -338,9 +336,7 @@ fun MainScreen(
                                         )
                                     }
                                     Text(
-                                        text = screenState.selectedMonth.format(
-                                            DateTimeFormatter.ofPattern("MMMM yyyy")
-                                        ),
+                                        text = headerState.monthLabel,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -365,6 +361,49 @@ fun MainScreen(
                                         dayNoteInput = screenState.dayNotesByDate[date].orEmpty()
                                         isDayNoteDialogVisible = true
                                     }
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Surface(
+                            tonalElevation = 1.dp,
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Month overview",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "All habits",
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                MonthCalendar(
+                                    month = screenState.selectedMonth,
+                                    completedDates = screenState.globalCompletedDates,
+                                    scheduledDates = screenState.globalScheduledDates,
+                                    birthdayDates = screenState.globalBirthdayDates,
+                                    noteDates = screenState.globalNoteDates,
+                                    todayDate = screenState.businessToday,
+                                    onToggleDate = { date ->
+                                        globalDayDetails = viewModel.getGlobalDayDetails(date)
+                                        isGlobalDayDetailsDialogVisible = true
+                                    },
+                                    onOpenDayNote = { },
+                                    interactive = true
                                 )
                             }
                         }
@@ -1018,5 +1057,60 @@ fun MainScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun HomeLoadingState() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Loading habits...",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        HomeCalendarPlaceholder()
+        HomeCalendarPlaceholder()
+    }
+}
+
+@Composable
+private fun HomeCalendarPlaceholder() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(6) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(7) {
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 2.dp),
+                                tonalElevation = 1.dp,
+                                shape = MaterialTheme.shapes.medium
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

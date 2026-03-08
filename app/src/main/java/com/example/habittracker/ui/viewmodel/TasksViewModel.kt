@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
+import com.example.habittracker.util.DebugLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,7 @@ class TasksViewModel @Inject constructor(
     private val repository: HabitRepository,
     private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
+    private val logTag = "TasksVM"
     private val mutableUiState = MutableStateFlow(TasksUiState())
     val uiState: StateFlow<TasksUiState> = mutableUiState.asStateFlow()
     private var allTasksCache: List<TaskUiItem> = emptyList()
@@ -58,6 +60,7 @@ class TasksViewModel @Inject constructor(
             ) { tasks, categories ->
                 Pair(tasks, categories)
             }.collect { (tasks, dbCategories) ->
+                DebugLog.d(logTag, "flow update tasks=${tasks.size} categories=${dbCategories.size}")
                 val mapped = tasks.map {
                     TaskUiItem(
                         id = it.id,
@@ -74,14 +77,10 @@ class TasksViewModel @Inject constructor(
                 allTasksCache = mapped
                 categoriesCache = dbCategories.map { it.name }
                 mutableUiState.update { currentState -> buildUiState(currentState.selectedCategory) }
+                DebugLog.d(logTag, "uiState publish selected=${mutableUiState.value.selectedCategory} pending=${mutableUiState.value.pending.size} done=${mutableUiState.value.done.size}")
             }
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.observeReminderScheduleItems().collect { reminders ->
-                reminderScheduler.rescheduleAll(reminders)
-            }
-        }
     }
 
     fun addTask(
@@ -92,10 +91,14 @@ class TasksViewModel @Inject constructor(
         reminderDateTimesCsv: String?,
         reminderMessage: String?
     ): Boolean {
-        val hasOneTimeReminders = repository.parseReminderDateTimesCsv(reminderDateTimesCsv).isNotEmpty()
+        val oneTimeReminderCount = repository.parseReminderDateTimesCsv(reminderDateTimesCsv).size
+        val hasOneTimeReminders = oneTimeReminderCount > 0
+        DebugLog.d(logTag, "addTask titleLength=${title.length} category=$category reminderEnabled=$reminderEnabled oneTimeCount=$oneTimeReminderCount")
         if (reminderEnabled && !hasOneTimeReminders) return false
         viewModelScope.launch {
             repository.addTask(title, category, reminderEnabled, reminderTime, reminderDateTimesCsv, reminderMessage)
+            rescheduleReminders("addTask")
+            DebugLog.d(logTag, "addTask completed category=$category")
         }
         return true
     }
@@ -109,26 +112,36 @@ class TasksViewModel @Inject constructor(
         reminderDateTimesCsv: String?,
         reminderMessage: String?
     ): Boolean {
-        val hasOneTimeReminders = repository.parseReminderDateTimesCsv(reminderDateTimesCsv).isNotEmpty()
+        val oneTimeReminderCount = repository.parseReminderDateTimesCsv(reminderDateTimesCsv).size
+        val hasOneTimeReminders = oneTimeReminderCount > 0
+        DebugLog.d(logTag, "updateTask taskId=$taskId category=$category reminderEnabled=$reminderEnabled oneTimeCount=$oneTimeReminderCount")
         if (reminderEnabled && !hasOneTimeReminders) return false
         viewModelScope.launch {
             repository.updateTask(taskId, title, category, reminderEnabled, reminderTime, reminderDateTimesCsv, reminderMessage)
+            rescheduleReminders("updateTask")
+            DebugLog.d(logTag, "updateTask completed taskId=$taskId")
         }
         return true
     }
 
     fun toggleTask(task: TaskUiItem) {
-        viewModelScope.launch { repository.setTaskDone(task.id, !task.isDone) }
+        DebugLog.d(logTag, "toggleTask taskId=${task.id} currentDone=${task.isDone}")
+        viewModelScope.launch {
+            repository.setTaskDone(task.id, !task.isDone)
+            rescheduleReminders("toggleTask")
+        }
     }
 
     fun deleteTask(task: TaskUiItem) {
+        DebugLog.d(logTag, "deleteTask taskId=${task.id}")
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteTask(task.id)
-            reminderScheduler.rescheduleAll(repository.getReminderScheduleItems())
+            rescheduleReminders("deleteTask")
         }
     }
 
     fun moveTask(taskId: Long, isDone: Boolean, direction: Int) {
+        DebugLog.d(logTag, "moveTask taskId=$taskId isDone=$isDone direction=$direction")
         val sourceList = if (isDone) mutableUiState.value.done else mutableUiState.value.pending
         val fromIndex = sourceList.indexOfFirst { it.id == taskId }
         if (fromIndex == -1) return
@@ -149,17 +162,20 @@ class TasksViewModel @Inject constructor(
         reorderJob?.cancel()
         reorderJob = viewModelScope.launch {
             delay(300)
+            DebugLog.d(logTag, "persist task reorder count=${reordered.size} isDone=$isDone")
             repository.reorderTasksForDoneState(reordered.map { it.id })
         }
     }
 
     fun selectCategory(category: String) {
+        DebugLog.d(logTag, "selectCategory category=$category")
         mutableUiState.update { buildUiState(category) }
     }
 
     fun addCategory(category: String): Boolean {
         val sanitized = category.trim()
         if (sanitized.isEmpty() || sanitized == ALL_CATEGORIES) return false
+        DebugLog.d(logTag, "addCategory category=$sanitized")
         viewModelScope.launch { repository.addTaskCategory(sanitized) }
         mutableUiState.update { buildUiState(sanitized) }
         return true
@@ -170,15 +186,18 @@ class TasksViewModel @Inject constructor(
         if (sanitized.isEmpty() || sanitized == ALL_CATEGORIES || sanitized == HabitRepository.DEFAULT_TASK_CATEGORY) {
             return false
         }
+        DebugLog.d(logTag, "deleteCategory category=$sanitized")
         viewModelScope.launch {
             repository.deleteAllTasksInCategory(sanitized)
             repository.deleteTaskCategory(sanitized)
+            rescheduleReminders("deleteCategory")
         }
         mutableUiState.update { buildUiState(HabitRepository.DEFAULT_TASK_CATEGORY) }
         return true
     }
 
     fun moveCategory(categoryName: String, direction: Int) {
+        DebugLog.d(logTag, "moveCategory category=$categoryName direction=$direction")
         val cats = mutableUiState.value.categories
         val fromIndex = cats.indexOf(categoryName)
         if (fromIndex == -1) return
@@ -198,6 +217,7 @@ class TasksViewModel @Inject constructor(
         categoryReorderJob?.cancel()
         categoryReorderJob = viewModelScope.launch {
             delay(300)
+            DebugLog.d(logTag, "persist category reorder count=${reordered.size}")
             repository.reorderTaskCategories(reordered)
         }
     }
@@ -209,6 +229,7 @@ class TasksViewModel @Inject constructor(
         val existingTask = allTasksCache.firstOrNull { it.id == taskId } ?: return false
         if (existingTask.category == sanitizedTarget) return true
 
+        DebugLog.d(logTag, "transferTaskToCategory taskId=$taskId target=$sanitizedTarget")
         viewModelScope.launch {
             repository.addTaskCategory(sanitizedTarget)
             repository.updateTask(
@@ -220,6 +241,8 @@ class TasksViewModel @Inject constructor(
                 reminderDateTimesCsv = existingTask.reminderDateTimesCsv,
                 reminderMessage = existingTask.reminderMessage
             )
+            rescheduleReminders("transferTaskToCategory")
+            DebugLog.d(logTag, "transferTaskToCategory completed taskId=$taskId target=$sanitizedTarget")
         }
         return true
     }
@@ -245,5 +268,11 @@ class TasksViewModel @Inject constructor(
             pending = pending,
             done = done
         )
+    }
+
+    private suspend fun rescheduleReminders(reason: String) {
+        val reminders = repository.getReminderScheduleItems()
+        DebugLog.d(logTag, "rescheduleReminders reason=$reason count=${reminders.size}")
+        reminderScheduler.rescheduleAll(reminders)
     }
 }

@@ -12,6 +12,12 @@ interface HabitDayNoteDao {
     @Query("SELECT * FROM habit_day_notes WHERE habitId = :habitId")
     fun observeNotesForHabit(habitId: Long): Flow<List<HabitDayNote>>
 
+    @Query("SELECT * FROM habit_day_notes WHERE habitId = :habitId AND date BETWEEN :startDate AND :endDate")
+    fun observeNotesForHabitInRange(habitId: Long, startDate: String, endDate: String): Flow<List<HabitDayNote>>
+
+    @Query("SELECT * FROM habit_day_notes WHERE date BETWEEN :startDate AND :endDate")
+    fun observeNotesInRange(startDate: String, endDate: String): Flow<List<HabitDayNote>>
+
     @Query("SELECT * FROM habit_day_notes")
     fun observeAllNotes(): Flow<List<HabitDayNote>>
 

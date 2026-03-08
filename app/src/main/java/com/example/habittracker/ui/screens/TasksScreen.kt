@@ -76,6 +76,7 @@ import com.example.habittracker.ui.viewmodel.TaskUiItem
 import com.example.habittracker.ui.viewmodel.TasksViewModel
 import com.example.habittracker.ui.viewmodel.ALL_CATEGORIES
 import com.example.habittracker.repository.HabitRepository
+import com.example.habittracker.util.DebugLog
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -90,6 +91,12 @@ private val ReminderDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPatt
 @Composable
 fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(state.selectedCategory, state.categories.size, state.pending.size, state.done.size) {
+        DebugLog.d(
+            "TasksScreen",
+            "state category=${state.selectedCategory} categories=${state.categories.size} pending=${state.pending.size} done=${state.done.size}"
+        )
+    }
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var taskInput by rememberSaveable { mutableStateOf("") }

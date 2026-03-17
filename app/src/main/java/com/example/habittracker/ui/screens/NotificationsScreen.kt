@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.notifications.ReminderReceiver
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.NotificationsViewModel
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,6 +159,20 @@ fun NotificationsScreen(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TextButton(
+                                        onClick = { viewModel.snooze(item, TimeUnit.HOURS.toMillis(1)) }
+                                    ) {
+                                        Text("Snooze 1h")
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.snooze(item, TimeUnit.DAYS.toMillis(1)) }
+                                    ) {
+                                        Text("Snooze 1d")
+                                    }
+                                }
                             }
                         }
                     }

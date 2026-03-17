@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 
 data class SubGoalUiItem(
     val id: Long,
+    val goalId: Long,
     val title: String,
     val isDone: Boolean,
     val completedAt: Long?
@@ -54,6 +55,7 @@ class GoalsViewModel @Inject constructor(
                                 subGoals = goal.subGoals.map { subGoal ->
                                     SubGoalUiItem(
                                         id = subGoal.id,
+                                        goalId = subGoal.goalId,
                                         title = subGoal.title,
                                         isDone = subGoal.isDone,
                                         completedAt = subGoal.completedAt
@@ -102,6 +104,29 @@ class GoalsViewModel @Inject constructor(
 
     fun renameSubGoal(subGoal: SubGoalUiItem, title: String) {
         viewModelScope.launch { repository.renameSubGoal(subGoal.id, title) }
+    }
+
+    fun moveSubGoal(goalId: Long, subGoalId: Long, direction: Int) {
+        val currentGoals = mutableUiState.value.goals
+        val goal = currentGoals.firstOrNull { it.id == goalId } ?: return
+        val fromIndex = goal.subGoals.indexOfFirst { it.id == subGoalId }
+        if (fromIndex == -1) return
+        val toIndex = (fromIndex + direction).coerceIn(0, goal.subGoals.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reorderedSubGoals = goal.subGoals.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+        val reorderedGoals = currentGoals.map { currentGoal ->
+            if (currentGoal.id == goalId) currentGoal.copy(subGoals = reorderedSubGoals) else currentGoal
+        }
+        mutableUiState.update { it.copy(goals = reorderedGoals) }
+
+        reorderJob?.cancel()
+        reorderJob = viewModelScope.launch {
+            delay(300)
+            repository.reorderSubGoals(reorderedSubGoals.map { it.id })
+        }
     }
 
     fun moveGoal(goalId: Long, isDone: Boolean, direction: Int) {

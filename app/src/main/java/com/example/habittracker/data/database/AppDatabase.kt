@@ -10,6 +10,7 @@ import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
 import com.example.habittracker.data.dao.MoneyExpenseDao
 import com.example.habittracker.data.dao.MoneySettingsDao
+import com.example.habittracker.data.dao.MoodEntryDao
 import com.example.habittracker.data.dao.ReminderSettingsDao
 import com.example.habittracker.data.dao.ReminderTimeDao
 import com.example.habittracker.data.dao.SubGoalDao
@@ -25,6 +26,7 @@ import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
 import com.example.habittracker.data.entity.MoneyExpense
 import com.example.habittracker.data.entity.MoneySettings
+import com.example.habittracker.data.entity.MoodEntry
 import com.example.habittracker.data.entity.ReminderSettings
 import com.example.habittracker.data.entity.ReminderTime
 import com.example.habittracker.data.entity.SubGoal
@@ -50,9 +52,10 @@ import com.example.habittracker.data.entity.WhoAmINote
         HomeMonthSnapshot::class,
         MoneySettings::class,
         MoneyExpense::class,
-        WeightEntry::class
+        WeightEntry::class,
+        MoodEntry::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -71,6 +74,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun moneySettingsDao(): MoneySettingsDao
     abstract fun moneyExpenseDao(): MoneyExpenseDao
     abstract fun weightEntryDao(): WeightEntryDao
+    abstract fun moodEntryDao(): MoodEntryDao
 
     companion object {
         const val NAME = "habit_tracker.db"

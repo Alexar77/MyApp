@@ -344,6 +344,36 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `money_expenses` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'General'")
+            db.execSQL("ALTER TABLE `sub_goals` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                """
+                UPDATE `sub_goals`
+                SET `sortOrder` = (
+                    SELECT COUNT(*)
+                    FROM `sub_goals` s2
+                    WHERE s2.`goalId` = `sub_goals`.`goalId`
+                      AND (s2.`createdAt` < `sub_goals`.`createdAt`
+                           OR (s2.`createdAt` = `sub_goals`.`createdAt` AND s2.`id` < `sub_goals`.`id`))
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `mood_entries` (
+                    `date` TEXT NOT NULL,
+                    `mood` TEXT NOT NULL,
+                    `note` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`date`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -362,6 +392,7 @@ object DatabaseMigrations {
         MIGRATION_15_16,
         MIGRATION_16_17,
         MIGRATION_17_18,
-        MIGRATION_18_19
+        MIGRATION_18_19,
+        MIGRATION_19_20
     )
 }

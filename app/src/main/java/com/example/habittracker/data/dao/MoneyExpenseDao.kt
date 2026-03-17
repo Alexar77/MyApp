@@ -15,6 +15,9 @@ interface MoneyExpenseDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(expense: MoneyExpense)
 
+    @Query("UPDATE money_expenses SET category = :replacementCategory WHERE category = :categoryName")
+    suspend fun replaceCategory(categoryName: String, replacementCategory: String)
+
     @Query("DELETE FROM money_expenses WHERE id = :expenseId")
     suspend fun deleteById(expenseId: Long)
 }

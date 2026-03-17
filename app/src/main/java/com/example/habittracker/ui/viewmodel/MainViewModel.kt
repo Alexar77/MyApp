@@ -62,7 +62,11 @@ data class GlobalHabitDayDetail(
 data class GlobalDayDetails(
     val date: String,
     val habits: List<GlobalHabitDayDetail>,
-    val birthdayNames: List<String>
+    val birthdayNames: List<String>,
+    val completedTasks: List<String>,
+    val moneyEntries: List<HabitRepository.GlobalMoneyEntrySnapshot>,
+    val weightKg: Double?,
+    val mood: HabitRepository.GlobalMoodSnapshot?
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -104,6 +108,14 @@ class MainViewModel @Inject constructor(
     private var globalDayDetailsCache: Map<String, List<HabitRepository.GlobalDayDetailSnapshot>> = emptyMap()
     @Volatile
     private var globalBirthdayNamesByDateCache: Map<String, List<String>> = emptyMap()
+    @Volatile
+    private var globalCompletedTasksByDateCache: Map<String, List<String>> = emptyMap()
+    @Volatile
+    private var globalMoneyEntriesByDateCache: Map<String, List<HabitRepository.GlobalMoneyEntrySnapshot>> = emptyMap()
+    @Volatile
+    private var globalWeightByDateCache: Map<String, Double> = emptyMap()
+    @Volatile
+    private var globalMoodByDateCache: Map<String, HabitRepository.GlobalMoodSnapshot> = emptyMap()
     @Volatile
     private var hasReceivedHabitSnapshot = false
     @Volatile
@@ -270,6 +282,10 @@ class MainViewModel @Inject constructor(
 
                 globalDayDetailsCache = globalSnapshot.dayDetailsByDate
                 globalBirthdayNamesByDateCache = globalSnapshot.birthdayNamesByDate
+                globalCompletedTasksByDateCache = globalSnapshot.completedTasksByDate
+                globalMoneyEntriesByDateCache = globalSnapshot.moneyEntriesByDate
+                globalWeightByDateCache = globalSnapshot.weightByDate
+                globalMoodByDateCache = globalSnapshot.moodByDate
 
                 mutableUiState.value = combinedState
                 if (combinedState.isDataLoaded) {
@@ -527,10 +543,18 @@ class MainViewModel @Inject constructor(
             )
         }
         val birthdays = globalBirthdayNamesByDateCache[date].orEmpty()
+        val completedTasks = globalCompletedTasksByDateCache[date].orEmpty()
+        val moneyEntries = globalMoneyEntriesByDateCache[date].orEmpty()
+        val weightKg = globalWeightByDateCache[date]
+        val mood = globalMoodByDateCache[date]
         val result = GlobalDayDetails(
             date = date,
             habits = habits,
-            birthdayNames = birthdays
+            birthdayNames = birthdays,
+            completedTasks = completedTasks,
+            moneyEntries = moneyEntries,
+            weightKg = weightKg,
+            mood = mood
         )
         return result
     }

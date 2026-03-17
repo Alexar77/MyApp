@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.ui.components.FabScrollClearance
+import com.example.habittracker.ui.components.DatePickerField
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.BirthdayUiItem
 import com.example.habittracker.ui.viewmodel.BirthdaysViewModel
@@ -68,8 +69,14 @@ fun BirthdaysScreen(
     var editTarget by remember { mutableStateOf<BirthdayUiItem?>(null) }
     var nameInput by rememberSaveable { mutableStateOf("") }
     var dateInput by rememberSaveable { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var reminderDateTimes by remember { mutableStateOf(listOf<Long>()) }
     var pendingDelete by remember { mutableStateOf<BirthdayUiItem?>(null) }
+    val filteredBirthdays = remember(screenState.birthdays, searchQuery) {
+        if (searchQuery.isBlank()) screenState.birthdays else screenState.birthdays.filter {
+            it.name.contains(searchQuery.trim(), ignoreCase = true)
+        }
+    }
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
     val dateTimeFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm") }
@@ -159,7 +166,24 @@ fun BirthdaysScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
             ) {
-                items(screenState.birthdays, key = { it.id }) { birthday ->
+                item {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search birthdays") }
+                    )
+                }
+                if (filteredBirthdays.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No matching birthdays",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                items(filteredBirthdays, key = { it.id }) { birthday ->
                     var isActionsMenuExpanded by rememberSaveable(birthday.id) { mutableStateOf(false) }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -245,33 +269,23 @@ fun BirthdaysScreen(
                 label = { Text("Name") }
             )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val currentDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
-                            ?: LocalDate.now()
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, dayOfMonth ->
-                                dateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
-                            },
-                            currentDate.year,
-                            currentDate.monthValue - 1,
-                            currentDate.dayOfMonth
-                        ).show()
-                    }
-            ) {
-                OutlinedTextField(
-                    value = dateInput,
-                    onValueChange = {},
-                    enabled = false,
-                    singleLine = true,
-                    label = { Text("Birthday date (includes year)") },
-                    trailingIcon = { Icon(AppIcons.Cake, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            DatePickerField(
+                value = dateInput,
+                label = "Birthday date (includes year)",
+                onClick = {
+                    val currentDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
+                        ?: LocalDate.now()
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            dateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
+                        },
+                        currentDate.year,
+                        currentDate.monthValue - 1,
+                        currentDate.dayOfMonth
+                    ).show()
+                }
+            )
 
             TextButton(onClick = { openReminderDateTimePicker() }) {
                 Text("Add reminder date/time")

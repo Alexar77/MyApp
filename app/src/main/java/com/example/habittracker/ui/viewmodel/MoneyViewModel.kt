@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 data class MoneyExpenseUiItem(
     val id: Long,
     val title: String,
+    val category: String,
     val amount: Double,
     val isIncome: Boolean,
     val paidAt: Long,
@@ -53,6 +54,7 @@ class MoneyViewModel @Inject constructor(
                     MoneyExpenseUiItem(
                         id = expense.id,
                         title = expense.title,
+                        category = expense.category,
                         amount = expense.amount,
                         isIncome = expense.isIncome,
                         paidAt = expense.paidAt,
@@ -81,15 +83,21 @@ class MoneyViewModel @Inject constructor(
         }
     }
 
-    fun addExpense(title: String, amount: Double, isIncome: Boolean, paidAt: Long) {
+    fun addExpense(title: String, amount: Double, isIncome: Boolean, paidAt: Long, category: String) {
         viewModelScope.launch {
-            repository.addMoneyExpense(title, amount, isIncome, paidAt)
+            repository.addMoneyExpense(title, amount, isIncome, paidAt, category)
         }
     }
 
     fun deleteExpense(expenseId: Long) {
         viewModelScope.launch {
             repository.deleteMoneyExpense(expenseId)
+        }
+    }
+
+    fun deleteCategory(categoryName: String) {
+        viewModelScope.launch {
+            repository.replaceMoneyCategory(categoryName)
         }
     }
 

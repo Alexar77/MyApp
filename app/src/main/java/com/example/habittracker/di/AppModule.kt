@@ -11,6 +11,7 @@ import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
 import com.example.habittracker.data.dao.MoneyExpenseDao
 import com.example.habittracker.data.dao.MoneySettingsDao
+import com.example.habittracker.data.dao.MoodEntryDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
@@ -55,6 +56,7 @@ object AppModule {
     @Provides fun provideMoneySettingsDao(database: AppDatabase): MoneySettingsDao = database.moneySettingsDao()
     @Provides fun provideMoneyExpenseDao(database: AppDatabase): MoneyExpenseDao = database.moneyExpenseDao()
     @Provides fun provideWeightEntryDao(database: AppDatabase): WeightEntryDao = database.weightEntryDao()
+    @Provides fun provideMoodEntryDao(database: AppDatabase): MoodEntryDao = database.moodEntryDao()
 
     @Provides
     @Singleton
@@ -72,6 +74,7 @@ object AppModule {
         moneySettingsDao: MoneySettingsDao,
         moneyExpenseDao: MoneyExpenseDao,
         weightEntryDao: WeightEntryDao,
+        moodEntryDao: MoodEntryDao,
         appPreferences: SharedPreferences
     ): HabitRepository {
         return HabitRepository(
@@ -88,6 +91,7 @@ object AppModule {
             moneySettingsDao = moneySettingsDao,
             moneyExpenseDao = moneyExpenseDao,
             weightEntryDao = weightEntryDao,
+            moodEntryDao = moodEntryDao,
             appPreferences = appPreferences
         )
     }

@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -225,6 +226,9 @@ fun GoalsScreen(
                                         renameInput = goal.title
                                     },
                                     onToggleSubGoal = viewModel::toggleSubGoal,
+                                    onMoveSubGoal = { subGoalId, direction ->
+                                        viewModel.moveSubGoal(goal.id, subGoalId, direction)
+                                    },
                                     onDeleteSubGoal = { subGoalPendingDelete = it },
                                     onRenameSubGoal = {
                                         subGoalPendingRename = it
@@ -303,6 +307,9 @@ fun GoalsScreen(
                                         renameInput = goal.title
                                     },
                                     onToggleSubGoal = viewModel::toggleSubGoal,
+                                    onMoveSubGoal = { subGoalId, direction ->
+                                        viewModel.moveSubGoal(goal.id, subGoalId, direction)
+                                    },
                                     onDeleteSubGoal = { subGoalPendingDelete = it },
                                     onRenameSubGoal = {
                                         subGoalPendingRename = it
@@ -496,6 +503,7 @@ private fun GoalCard(
     onDeleteGoal: () -> Unit,
     onRenameGoal: () -> Unit,
     onToggleSubGoal: (SubGoalUiItem) -> Unit,
+    onMoveSubGoal: (Long, Int) -> Unit,
     onDeleteSubGoal: (SubGoalUiItem) -> Unit,
     onRenameSubGoal: (SubGoalUiItem) -> Unit
 ) {
@@ -647,72 +655,114 @@ private fun GoalCard(
                     )
                 } else {
                     goal.subGoals.forEach { subGoal ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onToggleSubGoal(subGoal) }
-                                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (subGoal.isDone) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
-                                } else {
-                                    Icon(
-                                        AppIcons.RadioButtonUnchecked,
-                                        contentDescription = "Mark as done"
-                                    )
-                                }
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(start = 10.dp)
-                                ) {
-                                    Text(
-                                        text = subGoal.title,
-                                        textDecoration = if (subGoal.isDone) TextDecoration.LineThrough else TextDecoration.None,
-                                        color = if (subGoal.isDone) {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        }
-                                    )
-                                    if (subGoal.isDone && subGoal.completedAt != null) {
-                                        val completedDateText = remember(subGoal.completedAt) {
-                                            val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
-                                            java.time.Instant.ofEpochMilli(subGoal.completedAt)
-                                                .atZone(ZoneId.systemDefault())
-                                                .toLocalDate()
-                                                .format(formatter)
-                                        }
-                                        Text(
-                                            text = "Completed on $completedDateText",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                            IconButton(onClick = { onDeleteSubGoal(subGoal) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete subgoal")
-                            }
-                            IconButton(onClick = { onRenameSubGoal(subGoal) }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Rename subgoal")
-                            }
+                        key(subGoal.id) {
+                            SubGoalRow(
+                                subGoal = subGoal,
+                                onToggleSubGoal = { onToggleSubGoal(subGoal) },
+                                onMove = { direction -> onMoveSubGoal(subGoal.id, direction) },
+                                onDelete = { onDeleteSubGoal(subGoal) },
+                                onRename = { onRenameSubGoal(subGoal) }
+                            )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubGoalRow(
+    subGoal: SubGoalUiItem,
+    onToggleSubGoal: () -> Unit,
+    onMove: (Int) -> Unit,
+    onDelete: () -> Unit,
+    onRename: () -> Unit
+) {
+    var dragOffsetY by remember(subGoal.id) { mutableFloatStateOf(0f) }
+    var rowHeightPx by remember(subGoal.id) { mutableFloatStateOf(0f) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { translationY = dragOffsetY }
+            .zIndex(if (dragOffsetY != 0f) 1f else 0f)
+            .onSizeChanged { rowHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+            .pointerInput(subGoal.id) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { dragOffsetY = 0f },
+                    onDragEnd = { dragOffsetY = 0f },
+                    onDragCancel = { dragOffsetY = 0f },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragOffsetY += dragAmount.y
+                        val reorderStepPx = rowHeightPx
+                        while (dragOffsetY > reorderStepPx) {
+                            onMove(1)
+                            dragOffsetY -= reorderStepPx
+                        }
+                        while (dragOffsetY < -reorderStepPx) {
+                            onMove(-1)
+                            dragOffsetY += reorderStepPx
+                        }
+                    }
+                )
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onToggleSubGoal() }
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (subGoal.isDone) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
+                } else {
+                    Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp)
+                ) {
+                    Text(
+                        text = subGoal.title,
+                        textDecoration = if (subGoal.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                        color = if (subGoal.isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (subGoal.isDone && subGoal.completedAt != null) {
+                        val completedDateText = remember(subGoal.completedAt) {
+                            val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy")
+                            java.time.Instant.ofEpochMilli(subGoal.completedAt)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDate()
+                                .format(formatter)
+                        }
+                        Text(
+                            text = "Completed on $completedDateText",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete subgoal")
+            }
+            IconButton(onClick = onRename) {
+                Icon(Icons.Default.Edit, contentDescription = "Rename subgoal")
             }
         }
     }

@@ -82,7 +82,14 @@ fun WhoAmIScreen(
     var notePendingDelete by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
     var notePendingRename by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
     var renameInput by rememberSaveable { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var draggingNoteId by remember { mutableStateOf<Long?>(null) }
+    val filteredNotes = remember(state.notes, searchQuery) {
+        if (searchQuery.isBlank()) state.notes else state.notes.filter { note ->
+            val query = searchQuery.trim().lowercase()
+            note.title.lowercase().contains(query) || note.content.lowercase().contains(query)
+        }
+    }
 
     var isRefreshing by rememberSaveable { mutableStateOf(false) }
     val pullRefreshState = rememberPullRefreshState(
@@ -160,7 +167,24 @@ fun WhoAmIScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
                 ) {
-                    items(state.notes, key = { it.id }) { note ->
+                    item {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Search notes") }
+                        )
+                    }
+                    if (filteredNotes.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No matching notes",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    items(filteredNotes, key = { it.id }) { note ->
                         NoteCard(
                             modifier = Modifier,
                             note = note,

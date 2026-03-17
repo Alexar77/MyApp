@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +16,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -966,7 +968,13 @@ fun MainScreen(
                 if (details == null) {
                     Text("No details available.")
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             text = "Birthdays",
                             style = MaterialTheme.typography.titleSmall,
@@ -1004,6 +1012,84 @@ fun MainScreen(
                                 )
                                 Text(
                                     text = "Note: ${habitDetail.note?.takeIf { it.isNotBlank() } ?: "No note"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Completed tasks",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (details.completedTasks.isEmpty()) {
+                            Text(
+                                text = "No completed tasks",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            details.completedTasks.forEach { taskTitle ->
+                                Text(text = "✓ $taskTitle")
+                            }
+                        }
+
+                        Text(
+                            text = "Money",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (details.moneyEntries.isEmpty()) {
+                            Text(
+                                text = "No payments",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            val totalSpent = details.moneyEntries
+                                .filterNot { it.isIncome }
+                                .sumOf { it.amount }
+                            Text(
+                                text = "Spent total: ${String.format("%.2f", totalSpent)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            details.moneyEntries.forEach { entry ->
+                                val sign = if (entry.isIncome) "+" else "-"
+                                Text(
+                                    text = "$sign ${entry.title} (${entry.category}) - ${String.format("%.2f", entry.amount)}"
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "Weight",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = details.weightKg?.let { String.format("%.1f kg", it) } ?: "No weight logged",
+                            color = if (details.weightKg == null) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+
+                        Text(
+                            text = "Mood",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (details.mood == null) {
+                            Text(
+                                text = "No mood logged",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(details.mood.mood)
+                            if (!details.mood.note.isNullOrBlank()) {
+                                Text(
+                                    text = details.mood.note.orEmpty(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

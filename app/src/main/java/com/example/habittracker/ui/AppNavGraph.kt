@@ -61,14 +61,14 @@ data class BottomRoute(
 object Routes {
     val Home = BottomRoute("home", "Home", Icons.Default.Home)
     val WhoAmI = BottomRoute("who_am_i", "Who am I?", Icons.Default.Person)
-    val Motivation = BottomRoute("motivational", "Motivation", Icons.Default.Star)
+    val Motivation = BottomRoute("motivational", "Mood", Icons.Default.Star)
     val Tasks = BottomRoute("tasks", "Tasks", Icons.AutoMirrored.Filled.List)
     val Goals = BottomRoute("goals", "Goals", AppIcons.Flag)
     const val BirthdaysRoute = "birthdays"
     const val NotificationsRoute = "notifications"
     const val MoneyRoute = "money"
     const val WeightRoute = "weight"
-    val BottomItems = listOf(Home, WhoAmI, Motivation, Tasks, Goals)
+    val BottomItems = listOf(Home, WhoAmI, Tasks, Goals)
     val DrawerItems = listOf(
         Home,
         WhoAmI,

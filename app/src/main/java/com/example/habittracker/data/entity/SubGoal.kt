@@ -22,6 +22,7 @@ data class SubGoal(
     val goalId: Long,
     val title: String,
     val isDone: Boolean,
+    val sortOrder: Int = 0,
     val completedAt: Long? = null,
     val createdAt: Long
 )

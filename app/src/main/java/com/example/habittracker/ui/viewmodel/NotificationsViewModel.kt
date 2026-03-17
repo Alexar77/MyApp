@@ -2,6 +2,7 @@ package com.example.habittracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
@@ -28,7 +29,8 @@ data class NotificationsUiState(
 
 @HiltViewModel
 class NotificationsViewModel @Inject constructor(
-    private val repository: HabitRepository
+    private val repository: HabitRepository,
+    private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(NotificationsUiState())
     val uiState: StateFlow<NotificationsUiState> = mutableUiState.asStateFlow()
@@ -61,6 +63,23 @@ class NotificationsViewModel @Inject constructor(
             .atZone(ZoneId.systemDefault())
             .toLocalDateTime()
             .format(formatter)
+    }
+
+    fun snooze(item: NotificationPreviewItem, durationMillis: Long) {
+        val targetMillis = System.currentTimeMillis() + durationMillis
+        val timeValue = Instant.ofEpochMilli(targetMillis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalTime()
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
+        reminderScheduler.schedule(
+            HabitRepository.ReminderScheduleItem(
+                uniqueKey = "${item.uniqueKey}:snooze:$targetMillis",
+                title = item.title,
+                message = item.message,
+                timeValue = timeValue,
+                triggerAtMillis = targetMillis
+            )
+        )
     }
 
     private fun nextDailyTrigger(timeValue: String): Long? {

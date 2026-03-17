@@ -2,6 +2,7 @@ package com.example.habittracker.ui.screens
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,12 +17,15 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,11 +85,15 @@ fun MoneyScreen(
     var budgetInput by rememberSaveable { mutableStateOf("") }
     var hourlyWageInput by rememberSaveable { mutableStateOf("") }
     var expenseTitleInput by rememberSaveable { mutableStateOf("") }
+    var expenseCategoryInput by rememberSaveable { mutableStateOf("General") }
     var expenseAmountInput by rememberSaveable { mutableStateOf("") }
     var expenseDateInput by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var expenseTypeInput by rememberSaveable { mutableStateOf(MoneyEntryType.EXPENSE) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isCategoryMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var hiddenAmounts by rememberSaveable { mutableStateOf(false) }
     var expensePendingDelete by remember { mutableStateOf<MoneyExpenseUiItem?>(null) }
+    var categoryPendingDelete by remember { mutableStateOf<String?>(null) }
     var selectedRate by rememberSaveable { mutableStateOf(MoneyChartRate.DAILY) }
     var selectedRange by rememberSaveable { mutableStateOf(ChartTimeRange.MONTHLY) }
     var customStartDateInput by rememberSaveable { mutableStateOf(LocalDate.now().minusMonths(1).toString()) }
@@ -125,6 +133,19 @@ fun MoneyScreen(
     val budgetLinePoints = remember(chartPoints, state.budgetAmount) {
         chartPoints.map { it.copy(value = state.budgetAmount) }
     }
+    val expenseCategories = remember(state.expenses) {
+        listOf("General") + state.expenses
+            .map { it.category.trim().ifBlank { "General" } }
+            .filter { it.isNotBlank() && it != "General" }
+            .distinct()
+            .sorted()
+    }
+    val filteredExpenses = remember(state.expenses, searchQuery) {
+        if (searchQuery.isBlank()) state.expenses else state.expenses.filter { expense ->
+            val query = searchQuery.trim().lowercase()
+            expense.title.lowercase().contains(query) || expense.category.lowercase().contains(query)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -151,9 +172,11 @@ fun MoneyScreen(
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 expenseTitleInput = ""
+                expenseCategoryInput = "General"
                 expenseAmountInput = ""
                 expenseDateInput = LocalDate.now().toString()
                 expenseTypeInput = MoneyEntryType.EXPENSE
+                isCategoryMenuExpanded = false
                 isExpenseDialogVisible = true
             }) {
                 Icon(Icons.Default.Add, contentDescription = "Add payment")
@@ -204,6 +227,13 @@ fun MoneyScreen(
                             text = "Income: ${displayAmount(state.totalIncome)}",
                             color = MoneyIncomeGreen
                         )
+                        if (expenseCategories.size > 1) {
+                            Text(
+                                text = "Categories: ${expenseCategories.joinToString()}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
@@ -261,12 +291,26 @@ fun MoneyScreen(
                 Text("Payments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
 
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Search payments or categories") }
+                )
+            }
+
             if (state.expenses.isEmpty()) {
                 item {
                     Text("No payments recorded yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            } else if (filteredExpenses.isEmpty()) {
+                item {
+                    Text("No matching payments", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             } else {
-                items(state.expenses, key = { it.id }) { expense ->
+                items(filteredExpenses, key = { it.id }) { expense ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
@@ -279,6 +323,11 @@ fun MoneyScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(expense.title, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = expense.category,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
                                 Text(
                                     text = "Paid ${viewModel.formatDateTime(expense.paidAt)}",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -360,6 +409,45 @@ fun MoneyScreen(
                         label = { Text(if (expenseTypeInput.isIncome) "Income source" else "Item") },
                         singleLine = true
                     )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { isCategoryMenuExpanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Category: $expenseCategoryInput")
+                                Icon(
+                                    imageVector = if (isCategoryMenuExpanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                                    contentDescription = if (isCategoryMenuExpanded) "Collapse categories" else "Expand categories"
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = isCategoryMenuExpanded,
+                            onDismissRequest = { isCategoryMenuExpanded = false }
+                        ) {
+                            expenseCategories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category) },
+                                    onClick = {
+                                        expenseCategoryInput = category
+                                        isCategoryMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    if (expenseCategoryInput != "General") {
+                        TextButton(
+                            onClick = { categoryPendingDelete = expenseCategoryInput }
+                        ) {
+                            Text("Delete selected category")
+                        }
+                    }
                     OutlinedTextField(
                         value = expenseAmountInput,
                         onValueChange = { expenseAmountInput = it.filter { ch -> ch.isDigit() || ch == '.' } },
@@ -382,7 +470,8 @@ fun MoneyScreen(
                             title = expenseTitleInput,
                             amount = amount,
                             isIncome = expenseTypeInput.isIncome,
-                            paidAt = paidDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            paidAt = paidDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                            category = expenseCategoryInput
                         )
                         isExpenseDialogVisible = false
                     }
@@ -407,6 +496,28 @@ fun MoneyScreen(
             },
             dismissButton = {
                 TextButton(onClick = { expensePendingDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (categoryPendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { categoryPendingDelete = null },
+            title = { Text("Delete category") },
+            text = {
+                Text("Delete \"${categoryPendingDelete}\" and move its payments to General?")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    categoryPendingDelete?.let(viewModel::deleteCategory)
+                    if (expenseCategoryInput == categoryPendingDelete) {
+                        expenseCategoryInput = "General"
+                    }
+                    categoryPendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { categoryPendingDelete = null }) { Text("Cancel") }
             }
         )
     }

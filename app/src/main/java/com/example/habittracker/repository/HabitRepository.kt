@@ -9,6 +9,7 @@ import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
 import com.example.habittracker.data.dao.MoneyExpenseDao
 import com.example.habittracker.data.dao.MoneySettingsDao
+import com.example.habittracker.data.dao.MoodEntryDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
@@ -22,12 +23,14 @@ import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
 import com.example.habittracker.data.entity.MoneyExpense
 import com.example.habittracker.data.entity.MoneySettings
+import com.example.habittracker.data.entity.MoodEntry
 import com.example.habittracker.data.entity.SubGoal
 import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
 import com.example.habittracker.data.entity.WeightEntry
 import com.example.habittracker.data.entity.WhoAmINote
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -61,6 +64,7 @@ class HabitRepository @Inject constructor(
     private val moneySettingsDao: MoneySettingsDao,
     private val moneyExpenseDao: MoneyExpenseDao,
     private val weightEntryDao: WeightEntryDao,
+    private val moodEntryDao: MoodEntryDao,
     private val appPreferences: SharedPreferences
 ) {
 
@@ -126,6 +130,32 @@ class HabitRepository @Inject constructor(
         val note: String?
     )
 
+    data class GlobalMoneyEntrySnapshot(
+        val title: String,
+        val category: String,
+        val amount: Double,
+        val isIncome: Boolean
+    )
+
+    data class GlobalMoodSnapshot(
+        val mood: String,
+        val note: String?
+    )
+
+    private data class GlobalMonthHabitData(
+        val habits: List<Habit>,
+        val completions: List<HabitCompletion>,
+        val notes: List<HabitDayNote>,
+        val birthdays: List<Birthday>
+    )
+
+    private data class GlobalMonthOtherData(
+        val tasks: List<TaskItem>,
+        val moneyEntries: List<MoneyExpense>,
+        val weightEntries: List<WeightEntry>,
+        val moodEntries: List<MoodEntry>
+    )
+
     data class GlobalMonthSnapshot(
         val month: YearMonth,
         val globalCompletedDates: Set<String>,
@@ -134,6 +164,10 @@ class HabitRepository @Inject constructor(
         val globalNoteDates: Set<String>,
         val birthdayNamesByDate: Map<String, List<String>>,
         val dayDetailsByDate: Map<String, List<GlobalDayDetailSnapshot>>,
+        val completedTasksByDate: Map<String, List<String>>,
+        val moneyEntriesByDate: Map<String, List<GlobalMoneyEntrySnapshot>>,
+        val weightByDate: Map<String, Double>,
+        val moodByDate: Map<String, GlobalMoodSnapshot>,
         val businessToday: LocalDate
     )
 
@@ -293,6 +327,9 @@ class HabitRepository @Inject constructor(
     fun observeWeightEntries(): Flow<List<WeightEntry>> =
         weightEntryDao.observeAll().distinctUntilChanged()
 
+    fun observeMoodEntries(): Flow<List<MoodEntry>> =
+        moodEntryDao.observeAll().distinctUntilChanged()
+
     fun observeSelectedHabitMonth(habitId: Long, month: YearMonth): Flow<SelectedHabitMonthSnapshot> {
         val (startDate, endDate) = monthRange(month)
         return combine(
@@ -344,25 +381,48 @@ class HabitRepository @Inject constructor(
 
     fun observeGlobalMonth(month: YearMonth): Flow<GlobalMonthSnapshot> {
         val (startDate, endDate) = monthRange(month)
-        return combine(
+        val startLocalDate = month.atDay(1)
+        val endLocalDate = month.atEndOfMonth()
+        val habitDataFlow = combine(
             habitDao.observeHabits(),
             completionDao.observeCompletionsInRange(startDate, endDate),
             habitDayNoteDao.observeNotesInRange(startDate, endDate),
             birthdayDao.observeAll()
         ) { habits, completions, notes, birthdays ->
+            GlobalMonthHabitData(
+                habits = habits,
+                completions = completions,
+                notes = notes,
+                birthdays = birthdays
+            )
+        }
+        val otherDataFlow = combine(
+            taskDao.observeAll(),
+            moneyExpenseDao.observeAll(),
+            weightEntryDao.observeAll(),
+            moodEntryDao.observeAll()
+        ) { tasks, moneyEntries, weightEntries, moodEntries ->
+            GlobalMonthOtherData(
+                tasks = tasks,
+                moneyEntries = moneyEntries,
+                weightEntries = weightEntries,
+                moodEntries = moodEntries
+            )
+        }
+        return combine(habitDataFlow, otherDataFlow) { habitData, otherData ->
             var snapshot: GlobalMonthSnapshot? = null
             measureTimeMillis {
                 val today = currentBusinessDate()
-                val completedByHabit = completions.asSequence()
+                val completedByHabit = habitData.completions.asSequence()
                     .filter { it.completed }
                     .groupBy(keySelector = { it.habitId }, valueTransform = { it.date })
                     .mapValues { (_, dates) -> dates.toSet() }
-                val notesByHabitAndDate = notes.associate { (it.habitId to it.date) to it.note }
+                val notesByHabitAndDate = habitData.notes.associate { (it.habitId to it.date) to it.note }
                 val dayScheduledCount = linkedMapOf<String, Int>()
                 val dayCompletionCount = linkedMapOf<String, Int>()
                 val dayDetails = linkedMapOf<String, MutableList<GlobalDayDetailSnapshot>>()
 
-                habits.forEach { habit ->
+                habitData.habits.forEach { habit ->
                     val createdDate = epochMillisToLocalDate(habit.createdAt)
                     val scheduledDates = calculateScheduledDatesInMonth(
                         createdDate = createdDate,
@@ -391,11 +451,57 @@ class HabitRepository @Inject constructor(
                     }
                 }
 
-                val birthdayNamesByDate = birthdays
+                val birthdayNamesByDate = habitData.birthdays
                     .groupBy { birthdayOccurrenceInYear(it.month, it.day, month.year).toString() }
                     .mapValues { (_, items) ->
                         items.map { it.name }.sortedBy { it.lowercase() }
                     }
+
+                val completedTasksByDate = otherData.tasks.asSequence()
+                    .mapNotNull { task ->
+                        val completedAt = task.completedAt ?: return@mapNotNull null
+                        val date = Instant.ofEpochMilli(completedAt)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                        if (date.isBefore(startLocalDate) || date.isAfter(endLocalDate)) return@mapNotNull null
+                        date.toString() to task.title
+                    }
+                    .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+                    .mapValues { (_, titles) -> titles.sortedBy { it.lowercase() } }
+
+                val moneyEntriesByDate = otherData.moneyEntries.asSequence()
+                    .mapNotNull { entry ->
+                        val date = Instant.ofEpochMilli(entry.paidAt)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                        if (date.isBefore(startLocalDate) || date.isAfter(endLocalDate)) return@mapNotNull null
+                        date.toString() to GlobalMoneyEntrySnapshot(
+                            title = entry.title,
+                            category = entry.category,
+                            amount = entry.amount,
+                            isIncome = entry.isIncome
+                        )
+                    }
+                    .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+
+                val weightByDate = otherData.weightEntries.asSequence()
+                    .mapNotNull { entry ->
+                        val date = runCatching { LocalDate.parse(entry.date) }.getOrNull() ?: return@mapNotNull null
+                        if (date.isBefore(startLocalDate) || date.isAfter(endLocalDate)) return@mapNotNull null
+                        date.toString() to entry.weightKg
+                    }
+                    .toMap()
+
+                val moodByDate = otherData.moodEntries.asSequence()
+                    .mapNotNull { entry ->
+                        val date = runCatching { LocalDate.parse(entry.date) }.getOrNull() ?: return@mapNotNull null
+                        if (date.isBefore(startLocalDate) || date.isAfter(endLocalDate)) return@mapNotNull null
+                        date.toString() to GlobalMoodSnapshot(
+                            mood = entry.mood,
+                            note = entry.note.takeIf { it.isNotBlank() }
+                        )
+                    }
+                    .toMap()
 
                 snapshot = GlobalMonthSnapshot(
                     month = month,
@@ -405,11 +511,15 @@ class HabitRepository @Inject constructor(
                     }.toSet(),
                     globalScheduledDates = dayScheduledCount.keys.toSet(),
                     globalBirthdayDates = birthdayNamesByDate.keys,
-                    globalNoteDates = notes.asSequence().map { it.date }.toSet(),
+                    globalNoteDates = habitData.notes.asSequence().map { it.date }.toSet(),
                     birthdayNamesByDate = birthdayNamesByDate,
                     dayDetailsByDate = dayDetails.mapValues { (_, items) ->
                         items.sortedBy { it.habitName.lowercase() }
                     },
+                    completedTasksByDate = completedTasksByDate,
+                    moneyEntriesByDate = moneyEntriesByDate,
+                    weightByDate = weightByDate,
+                    moodByDate = moodByDate,
                     businessToday = today
                 )
             }
@@ -421,6 +531,10 @@ class HabitRepository @Inject constructor(
                 globalNoteDates = emptySet(),
                 birthdayNamesByDate = emptyMap(),
                 dayDetailsByDate = emptyMap(),
+                completedTasksByDate = emptyMap(),
+                moneyEntriesByDate = emptyMap(),
+                weightByDate = emptyMap(),
+                moodByDate = emptyMap(),
                 businessToday = currentBusinessDate()
             )
         }
@@ -1011,7 +1125,15 @@ class HabitRepository @Inject constructor(
     suspend fun addSubGoal(goalId: Long, title: String) {
         val sanitized = title.trim()
         if (sanitized.isEmpty()) return
-        subGoalDao.insert(SubGoal(goalId = goalId, title = sanitized, isDone = false, createdAt = System.currentTimeMillis()))
+        subGoalDao.insert(
+            SubGoal(
+                goalId = goalId,
+                title = sanitized,
+                isDone = false,
+                sortOrder = subGoalDao.getMaxSortOrderForGoal(goalId) + 1,
+                createdAt = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun renameSubGoal(subGoalId: Long, title: String) {
@@ -1025,6 +1147,12 @@ class HabitRepository @Inject constructor(
         subGoalDao.updateDone(subGoalId, isDone, completedAt)
     }
     suspend fun deleteSubGoal(subGoalId: Long) = subGoalDao.deleteById(subGoalId)
+
+    suspend fun reorderSubGoals(orderedSubGoalIds: List<Long>) {
+        orderedSubGoalIds.forEachIndexed { index, subGoalId ->
+            subGoalDao.updateSortOrder(subGoalId = subGoalId, sortOrder = index)
+        }
+    }
 
     suspend fun addBirthday(name: String, year: Int, month: Int, day: Int): Long {
         val sanitized = name.trim()
@@ -1084,13 +1212,16 @@ class HabitRepository @Inject constructor(
         title: String,
         amount: Double,
         isIncome: Boolean,
-        paidAt: Long = System.currentTimeMillis()
+        paidAt: Long = System.currentTimeMillis(),
+        category: String = "General"
     ) {
         val sanitized = title.trim()
+        val sanitizedCategory = category.trim().ifBlank { "General" }
         if (sanitized.isEmpty() || amount <= 0.0) return
         moneyExpenseDao.insert(
             MoneyExpense(
                 title = sanitized,
+                category = sanitizedCategory,
                 amount = amount,
                 isIncome = isIncome,
                 paidAt = paidAt,
@@ -1101,6 +1232,13 @@ class HabitRepository @Inject constructor(
 
     suspend fun deleteMoneyExpense(expenseId: Long) {
         moneyExpenseDao.deleteById(expenseId)
+    }
+
+    suspend fun replaceMoneyCategory(categoryName: String, replacementCategory: String = "General") {
+        val source = categoryName.trim()
+        val target = replacementCategory.trim().ifBlank { "General" }
+        if (source.isBlank() || source == target || source == "General") return
+        moneyExpenseDao.replaceCategory(source, target)
     }
 
     suspend fun saveWeightEntry(date: LocalDate, weightKg: Double) {
@@ -1116,6 +1254,23 @@ class HabitRepository @Inject constructor(
 
     suspend fun deleteWeightEntry(date: String) {
         weightEntryDao.deleteByDate(date)
+    }
+
+    suspend fun saveMoodEntry(date: LocalDate, mood: String, note: String) {
+        val sanitizedMood = mood.trim()
+        if (sanitizedMood.isEmpty()) return
+        moodEntryDao.upsert(
+            MoodEntry(
+                date = date.toString(),
+                mood = sanitizedMood,
+                note = note.trim(),
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun deleteMoodEntry(date: String) {
+        moodEntryDao.deleteByDate(date)
     }
 
     fun birthdayOccurrenceInYear(month: Int, day: Int, year: Int): LocalDate {

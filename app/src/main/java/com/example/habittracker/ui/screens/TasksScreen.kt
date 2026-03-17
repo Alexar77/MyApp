@@ -6,9 +6,9 @@ import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -44,7 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -61,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +74,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.FabScrollClearance
 import com.example.habittracker.ui.viewmodel.TaskUiItem
 import com.example.habittracker.ui.viewmodel.TasksViewModel
 import com.example.habittracker.ui.viewmodel.ALL_CATEGORIES
@@ -88,7 +91,10 @@ private val ReminderDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPatt
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
+fun TasksScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: TasksViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var taskInput by rememberSaveable { mutableStateOf("") }
@@ -159,6 +165,11 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Tasks") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = {
@@ -208,83 +219,49 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = FabScrollClearance)
             ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        val selected = state.selectedCategory == ALL_CATEGORIES
-                        AssistChip(
-                            onClick = { viewModel.selectCategory(ALL_CATEGORIES) },
-                            label = { Text(ALL_CATEGORIES) },
-                            colors = if (selected) {
-                                AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            } else {
-                                AssistChipDefaults.assistChipColors()
-                            }
-                        )
-                    }
-                }
-                run {
-                    var draggingCategory by remember { mutableStateOf<String?>(null) }
-                    Row(
+                var isCategorySelectorExpanded by rememberSaveable { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = state.selectedCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text("Category filter") },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = AppIcons.SwapHoriz,
+                                contentDescription = "Select category"
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .height(56.dp)
+                            .clickable { isCategorySelectorExpanded = true }
+                    )
+                    DropdownMenu(
+                        expanded = isCategorySelectorExpanded,
+                        onDismissRequest = { isCategorySelectorExpanded = false }
                     ) {
-                        state.categories.forEach { category ->
-                            key(category) {
-                            val selected = state.selectedCategory == category
-                            val isDragging = draggingCategory == category
-                            var dragOffsetX by remember(category) { mutableFloatStateOf(0f) }
-                            val reorderStepPx = 80f
-                            AssistChip(
-                                onClick = { viewModel.selectCategory(category) },
-                                label = { Text(category) },
-                                colors = if (selected) {
-                                    AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                } else {
-                                    AssistChipDefaults.assistChipColors()
-                                },
-                                modifier = Modifier
-                                    .graphicsLayer {
-                                        translationX = dragOffsetX
-                                        alpha = if (isDragging) 0.8f else 1f
-                                    }
-                                    .pointerInput(category) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = category
-                                            },
-                                            onDragEnd = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = null
-                                            },
-                                            onDragCancel = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = null
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragOffsetX += dragAmount.x
-                                                while (dragOffsetX > reorderStepPx) {
-                                                    viewModel.moveCategory(category, 1)
-                                                    dragOffsetX -= reorderStepPx
-                                                }
-                                                while (dragOffsetX < -reorderStepPx) {
-                                                    viewModel.moveCategory(category, -1)
-                                                    dragOffsetX += reorderStepPx
-                                                }
-                                            }
-                                        )
-                                    }
-                            )
+                        DropdownMenuItem(
+                            text = { Text(ALL_CATEGORIES) },
+                            onClick = {
+                                viewModel.selectCategory(ALL_CATEGORIES)
+                                isCategorySelectorExpanded = false
                             }
+                        )
+                        state.categories.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category) },
+                                onClick = {
+                                    viewModel.selectCategory(category)
+                                    isCategorySelectorExpanded = false
+                                }
+                            )
                         }
                     }
                 }
@@ -296,29 +273,31 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     )
                 } else {
                     state.pending.forEach { task ->
-                        TaskRow(
-                            modifier = Modifier,
-                            task = task,
-                            isDragging = draggingTaskId == task.id,
-                            onToggle = { viewModel.toggleTask(task) },
-                            onDelete = { taskPendingDelete = task },
-                            onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
-                            onDragStart = { draggingTaskId = task.id },
-                            onDragEnd = { draggingTaskId = null },
-                            onTransfer = {
-                                taskToTransfer = task
-                                transferCategoryInput = task.category
-                            },
-                            onEdit = {
-                                taskEditing = task
-                                editTaskInput = task.title
-                                editTaskCategoryInput = task.category
-                                editReminderEnabledInput = task.reminderEnabled
-                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
-                                editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderSelectionError = false
-                            }
-                        )
+                        key(task.id) {
+                            TaskRow(
+                                modifier = Modifier,
+                                task = task,
+                                isDragging = draggingTaskId == task.id,
+                                onToggle = { viewModel.toggleTask(task) },
+                                onDelete = { taskPendingDelete = task },
+                                onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
+                                onDragStart = { draggingTaskId = task.id },
+                                onDragEnd = { draggingTaskId = null },
+                                onTransfer = {
+                                    taskToTransfer = task
+                                    transferCategoryInput = task.category
+                                },
+                                onEdit = {
+                                    taskEditing = task
+                                    editTaskInput = task.title
+                                    editTaskCategoryInput = task.category
+                                    editReminderEnabledInput = task.reminderEnabled
+                                    editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
+                                    editReminderMessageInput = task.reminderMessage.orEmpty()
+                                    editReminderSelectionError = false
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -331,29 +310,31 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     )
                 } else {
                     state.done.forEach { task ->
-                        TaskRow(
-                            modifier = Modifier,
-                            task = task,
-                            isDragging = draggingTaskId == task.id,
-                            onToggle = { viewModel.toggleTask(task) },
-                            onDelete = { taskPendingDelete = task },
-                            onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
-                            onDragStart = { draggingTaskId = task.id },
-                            onDragEnd = { draggingTaskId = null },
-                            onTransfer = {
-                                taskToTransfer = task
-                                transferCategoryInput = task.category
-                            },
-                            onEdit = {
-                                taskEditing = task
-                                editTaskInput = task.title
-                                editTaskCategoryInput = task.category
-                                editReminderEnabledInput = task.reminderEnabled
-                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
-                                editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderSelectionError = false
-                            }
-                        )
+                        key(task.id) {
+                            TaskRow(
+                                modifier = Modifier,
+                                task = task,
+                                isDragging = draggingTaskId == task.id,
+                                onToggle = { viewModel.toggleTask(task) },
+                                onDelete = { taskPendingDelete = task },
+                                onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
+                                onDragStart = { draggingTaskId = task.id },
+                                onDragEnd = { draggingTaskId = null },
+                                onTransfer = {
+                                    taskToTransfer = task
+                                    transferCategoryInput = task.category
+                                },
+                                onEdit = {
+                                    taskEditing = task
+                                    editTaskInput = task.title
+                                    editTaskCategoryInput = task.category
+                                    editReminderEnabledInput = task.reminderEnabled
+                                    editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
+                                    editReminderMessageInput = task.reminderMessage.orEmpty()
+                                    editReminderSelectionError = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -762,23 +743,22 @@ private fun TaskRow(
     onEdit: () -> Unit
 ) {
     var dragOffsetY by remember(task.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = 72f
+    var rowHeightPx by remember(task.id) { mutableFloatStateOf(0f) }
     var menuExpanded by remember { mutableStateOf(false) }
-
-    val dragModifier = if (isDragging) {
-        Modifier
-            .clip(TaskRowShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
-            .zIndex(1f)
+    val itemContainerColor = if (isDragging) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        Modifier
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer { translationY = dragOffsetY }
-            .then(dragModifier)
+            .zIndex(if (isDragging) 1f else 0f)
+            .onSizeChanged { size ->
+                rowHeightPx = size.height.toFloat().coerceAtLeast(1f)
+            }
             .pointerInput(task.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -796,6 +776,7 @@ private fun TaskRow(
                     onDrag = { change, dragAmount ->
                         change.consume()
                         dragOffsetY += dragAmount.y
+                        val reorderStepPx = rowHeightPx
 
                         while (dragOffsetY > reorderStepPx) {
                             onMove(1)
@@ -808,68 +789,80 @@ private fun TaskRow(
                     }
                 )
             }
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 2.dp)
     ) {
-        IconButton(onClick = onToggle) {
-            if (task.isDone) {
-                Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
-            } else {
-                Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = task.title,
-                textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
-                color = if (task.isDone) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(TaskRowShape)
+                .background(itemContainerColor)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                    shape = TaskRowShape
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onToggle) {
+                if (task.isDone) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
                 }
-            )
-            Text(
-                text = task.category,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (task.isDone && task.completedAt != null) {
-                val completedDateText = remember(task.completedAt) {
-                    java.time.Instant.ofEpochMilli(task.completedAt)
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDate()
-                        .format(CompletedDateFormatter)
-                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Completed on $completedDateText",
+                    text = task.title,
+                    textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                    color = if (task.isDone) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+                Text(
+                    text = task.category,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (task.isDone && task.completedAt != null) {
+                    val completedDateText = remember(task.completedAt) {
+                        java.time.Instant.ofEpochMilli(task.completedAt)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                            .format(CompletedDateFormatter)
+                    }
+                    Text(
+                        text = "Completed on $completedDateText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-        }
-        Box {
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "More actions")
-            }
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Edit") },
-                    onClick = { menuExpanded = false; onEdit() },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Transfer") },
-                    onClick = { menuExpanded = false; onTransfer() },
-                    leadingIcon = { Icon(AppIcons.SwapHoriz, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete") },
-                    onClick = { menuExpanded = false; onDelete() },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
-                )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = { menuExpanded = false; onEdit() },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Transfer") },
+                        onClick = { menuExpanded = false; onTransfer() },
+                        leadingIcon = { Icon(AppIcons.SwapHoriz, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = { menuExpanded = false; onDelete() },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                    )
+                }
             }
         }
     }

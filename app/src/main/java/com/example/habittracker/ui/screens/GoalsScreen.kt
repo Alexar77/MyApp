@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import com.example.habittracker.ui.icons.AppIcons
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -29,6 +31,8 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -53,12 +57,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.FabScrollClearance
 import com.example.habittracker.ui.viewmodel.GoalUiItem
 import com.example.habittracker.ui.viewmodel.GoalsViewModel
 import com.example.habittracker.ui.viewmodel.SubGoalUiItem
@@ -68,7 +74,10 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: GoalsViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val goalsToAchieve by remember(state.goals) {
         derivedStateOf { state.goals.filter { !it.isDone } }
@@ -107,7 +116,16 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Goals") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Goals") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = { isGoalDialogVisible = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Add goal")
@@ -125,7 +143,7 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
+                        .padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = FabScrollClearance),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -136,7 +154,8 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
                 ) {
                     item {
                         Card(
@@ -481,18 +500,27 @@ private fun GoalCard(
     onRenameSubGoal: (SubGoalUiItem) -> Unit
 ) {
     var dragOffsetY by remember(goal.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = 72f
+    var cardHeightPx by remember(goal.id) { mutableFloatStateOf(0f) }
+    var isGoalActionsMenuExpanded by rememberSaveable(goal.id) { mutableStateOf(false) }
     val dragContainerColor = if (isDragging) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .graphicsLayer { translationY = dragOffsetY }
             .zIndex(if (isDragging) 1f else 0f)
+            .onSizeChanged { size ->
+                cardHeightPx = size.height.toFloat().coerceAtLeast(1f)
+            }
             .pointerInput(goal.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -510,6 +538,7 @@ private fun GoalCard(
                     onDrag = { change, dragAmount ->
                         change.consume()
                         dragOffsetY += dragAmount.y
+                        val reorderStepPx = cardHeightPx
 
                         while (dragOffsetY > reorderStepPx) {
                             onMove(1)
@@ -521,7 +550,8 @@ private fun GoalCard(
                         }
                     }
                 )
-            }
+            },
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier
@@ -570,14 +600,36 @@ private fun GoalCard(
                     }
                 }
 
-                IconButton(onClick = onAddSubGoal) {
-                    Icon(Icons.Default.Add, contentDescription = "Add subgoal")
-                }
-                IconButton(onClick = onDeleteGoal) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete goal")
-                }
-                IconButton(onClick = onRenameGoal) {
-                    Icon(Icons.Default.Edit, contentDescription = "Rename goal")
+                Box {
+                    IconButton(onClick = { isGoalActionsMenuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Open goal actions")
+                    }
+                    DropdownMenu(
+                        expanded = isGoalActionsMenuExpanded,
+                        onDismissRequest = { isGoalActionsMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Add subgoal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onAddSubGoal()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Rename goal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onRenameGoal()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete goal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onDeleteGoal()
+                            }
+                        )
+                    }
                 }
                 IconButton(onClick = onToggleExpanded) {
                     Icon(

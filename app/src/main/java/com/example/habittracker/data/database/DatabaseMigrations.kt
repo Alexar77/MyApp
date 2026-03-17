@@ -299,6 +299,51 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `money_settings` (
+                    `id` INTEGER NOT NULL,
+                    `budgetAmount` REAL NOT NULL,
+                    `hourlyWage` REAL NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("INSERT OR IGNORE INTO `money_settings` (`id`, `budgetAmount`, `hourlyWage`) VALUES (0, 0, 0)")
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `money_expenses` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `amount` REAL NOT NULL,
+                    `paidAt` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `weight_entries` (
+                    `date` TEXT NOT NULL,
+                    `weightKg` REAL NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`date`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
+    val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `money_expenses` ADD COLUMN `isIncome` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -315,6 +360,8 @@ object DatabaseMigrations {
         MIGRATION_13_14,
         MIGRATION_14_15,
         MIGRATION_15_16,
-        MIGRATION_16_17
+        MIGRATION_16_17,
+        MIGRATION_17_18,
+        MIGRATION_18_19
     )
 }

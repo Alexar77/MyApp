@@ -18,8 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -27,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +36,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -59,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.FabScrollClearance
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
@@ -66,7 +70,10 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
+fun WhoAmIScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: WhoAmIViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
 
@@ -93,6 +100,11 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Who am I?") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = {
@@ -125,7 +137,7 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
+                        .padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = FabScrollClearance),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -145,7 +157,8 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
                 ) {
                     items(state.notes, key = { it.id }) { note ->
                         NoteCard(
@@ -281,17 +294,23 @@ private fun NoteCard(
     onSave: (String) -> Unit
 ) {
     var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
+    var isActionsMenuExpanded by rememberSaveable(note.id) { mutableStateOf(false) }
     val reorderStepPx = 72f
     var localContent by rememberSaveable(note.id) { mutableStateOf(note.content) }
     val dragContainerColor = if (isDragging) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .graphicsLayer {
                 translationY = dragOffsetY
             }
@@ -324,7 +343,8 @@ private fun NoteCard(
                         }
                     }
                 )
-            }
+            },
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier
@@ -346,11 +366,29 @@ private fun NoteCard(
                     fontWeight = FontWeight.Bold
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete note")
-                    }
-                    IconButton(onClick = onRename) {
-                        Icon(Icons.Default.Edit, contentDescription = "Rename note")
+                    Box {
+                        IconButton(onClick = { isActionsMenuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Open note actions")
+                        }
+                        DropdownMenu(
+                            expanded = isActionsMenuExpanded,
+                            onDismissRequest = { isActionsMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Rename note") },
+                                onClick = {
+                                    isActionsMenuExpanded = false
+                                    onRename()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete note") },
+                                onClick = {
+                                    isActionsMenuExpanded = false
+                                    onDelete()
+                                }
+                            )
+                        }
                     }
                     Icon(
                         imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,

@@ -7,9 +7,12 @@ import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
+import com.example.habittracker.data.dao.MoneyExpenseDao
+import com.example.habittracker.data.dao.MoneySettingsDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
+import com.example.habittracker.data.dao.WeightEntryDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
 import com.example.habittracker.data.entity.Birthday
@@ -17,9 +20,12 @@ import com.example.habittracker.data.entity.HomeMonthSnapshot
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
+import com.example.habittracker.data.entity.MoneyExpense
+import com.example.habittracker.data.entity.MoneySettings
 import com.example.habittracker.data.entity.SubGoal
 import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
+import com.example.habittracker.data.entity.WeightEntry
 import com.example.habittracker.data.entity.WhoAmINote
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -52,6 +58,9 @@ class HabitRepository @Inject constructor(
     private val subGoalDao: SubGoalDao,
     private val birthdayDao: BirthdayDao,
     private val homeMonthSnapshotDao: HomeMonthSnapshotDao,
+    private val moneySettingsDao: MoneySettingsDao,
+    private val moneyExpenseDao: MoneyExpenseDao,
+    private val weightEntryDao: WeightEntryDao,
     private val appPreferences: SharedPreferences
 ) {
 
@@ -274,6 +283,15 @@ class HabitRepository @Inject constructor(
                 )
             }
         }.distinctUntilChanged()
+
+    fun observeMoneySettings(): Flow<MoneySettings?> =
+        moneySettingsDao.observe().distinctUntilChanged()
+
+    fun observeMoneyExpenses(): Flow<List<MoneyExpense>> =
+        moneyExpenseDao.observeAll().distinctUntilChanged()
+
+    fun observeWeightEntries(): Flow<List<WeightEntry>> =
+        weightEntryDao.observeAll().distinctUntilChanged()
 
     fun observeSelectedHabitMonth(habitId: Long, month: YearMonth): Flow<SelectedHabitMonthSnapshot> {
         val (startDate, endDate) = monthRange(month)
@@ -1051,6 +1069,53 @@ class HabitRepository @Inject constructor(
     suspend fun deleteBirthday(birthdayId: Long) {
         birthdayDao.deleteById(birthdayId)
         refreshHomeMonthSnapshot()
+    }
+
+    suspend fun saveMoneySettings(budgetAmount: Double, hourlyWage: Double) {
+        moneySettingsDao.upsert(
+            MoneySettings(
+                budgetAmount = budgetAmount.coerceAtLeast(0.0),
+                hourlyWage = hourlyWage.coerceAtLeast(0.0)
+            )
+        )
+    }
+
+    suspend fun addMoneyExpense(
+        title: String,
+        amount: Double,
+        isIncome: Boolean,
+        paidAt: Long = System.currentTimeMillis()
+    ) {
+        val sanitized = title.trim()
+        if (sanitized.isEmpty() || amount <= 0.0) return
+        moneyExpenseDao.insert(
+            MoneyExpense(
+                title = sanitized,
+                amount = amount,
+                isIncome = isIncome,
+                paidAt = paidAt,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun deleteMoneyExpense(expenseId: Long) {
+        moneyExpenseDao.deleteById(expenseId)
+    }
+
+    suspend fun saveWeightEntry(date: LocalDate, weightKg: Double) {
+        if (weightKg <= 0.0) return
+        weightEntryDao.upsert(
+            WeightEntry(
+                date = date.toString(),
+                weightKg = weightKg,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun deleteWeightEntry(date: String) {
+        weightEntryDao.deleteByDate(date)
     }
 
     fun birthdayOccurrenceInYear(month: Int, day: Int, year: Int): LocalDate {

@@ -8,11 +8,14 @@ import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
+import com.example.habittracker.data.dao.MoneyExpenseDao
+import com.example.habittracker.data.dao.MoneySettingsDao
 import com.example.habittracker.data.dao.ReminderSettingsDao
 import com.example.habittracker.data.dao.ReminderTimeDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
+import com.example.habittracker.data.dao.WeightEntryDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
 import com.example.habittracker.data.entity.Birthday
@@ -20,11 +23,14 @@ import com.example.habittracker.data.entity.HomeMonthSnapshot
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
+import com.example.habittracker.data.entity.MoneyExpense
+import com.example.habittracker.data.entity.MoneySettings
 import com.example.habittracker.data.entity.ReminderSettings
 import com.example.habittracker.data.entity.ReminderTime
 import com.example.habittracker.data.entity.SubGoal
 import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
+import com.example.habittracker.data.entity.WeightEntry
 import com.example.habittracker.data.entity.WhoAmINote
 
 @Database(
@@ -41,9 +47,12 @@ import com.example.habittracker.data.entity.WhoAmINote
         ReminderTime::class,
         Birthday::class
         ,
-        HomeMonthSnapshot::class
+        HomeMonthSnapshot::class,
+        MoneySettings::class,
+        MoneyExpense::class,
+        WeightEntry::class
     ],
-    version = 17,
+    version = 19,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -59,6 +68,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun reminderTimeDao(): ReminderTimeDao
     abstract fun birthdayDao(): BirthdayDao
     abstract fun homeMonthSnapshotDao(): HomeMonthSnapshotDao
+    abstract fun moneySettingsDao(): MoneySettingsDao
+    abstract fun moneyExpenseDao(): MoneyExpenseDao
+    abstract fun weightEntryDao(): WeightEntryDao
 
     companion object {
         const val NAME = "habit_tracker.db"

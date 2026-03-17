@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +38,7 @@ class GoalsViewModel @Inject constructor(
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(GoalsUiState())
     val uiState: StateFlow<GoalsUiState> = mutableUiState.asStateFlow()
+    private var reorderJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -102,19 +105,34 @@ class GoalsViewModel @Inject constructor(
     }
 
     fun moveGoal(goalId: Long, isDone: Boolean, direction: Int) {
-        val sourceList = mutableUiState.value.goals.filter { it.isDone == isDone }
+        val currentGoals = mutableUiState.value.goals
+        val sourceList = currentGoals.filter { it.isDone == isDone }
         val fromIndex = sourceList.indexOfFirst { it.id == goalId }
         if (fromIndex == -1) return
 
         val toIndex = (fromIndex + direction).coerceIn(0, sourceList.lastIndex)
         if (toIndex == fromIndex) return
 
-        val reordered = sourceList.toMutableList().apply {
+        val reorderedSubset = sourceList.toMutableList().apply {
             add(toIndex, removeAt(fromIndex))
         }
 
-        viewModelScope.launch {
-            repository.reorderGoalsForDoneState(reordered.map { it.id })
+        val reorderedIds = reorderedSubset.map { it.id }.iterator()
+        val reorderedGoals = currentGoals.map { goal ->
+            if (goal.isDone == isDone) {
+                val nextId = reorderedIds.next()
+                reorderedSubset.first { it.id == nextId }
+            } else {
+                goal
+            }
+        }
+
+        mutableUiState.update { it.copy(goals = reorderedGoals) }
+
+        reorderJob?.cancel()
+        reorderJob = viewModelScope.launch {
+            delay(300)
+            repository.reorderGoalsForDoneState(reorderedSubset.map { it.id })
         }
     }
 }

@@ -357,4 +357,38 @@ object AppIcons {
                 close()
             }.build()
     }
+
+    val Scale: ImageVector by lazy {
+        ImageVector.Builder("Scale", 24.dp, 24.dp, 24f, 24f)
+            .path(fill = SolidColor(Color.Black)) {
+                moveTo(7f, 4f)
+                horizontalLineToRelative(10f)
+                curveTo(19.76f, 4f, 22f, 6.24f, 22f, 9f)
+                verticalLineToRelative(8f)
+                curveTo(22f, 19.76f, 19.76f, 22f, 17f, 22f)
+                horizontalLineTo(7f)
+                curveTo(4.24f, 22f, 2f, 19.76f, 2f, 17f)
+                verticalLineTo(9f)
+                curveTo(2f, 6.24f, 4.24f, 4f, 7f, 4f)
+                close()
+                moveTo(12f, 8f)
+                curveTo(9.24f, 8f, 7f, 10.24f, 7f, 13f)
+                horizontalLineToRelative(2f)
+                curveTo(9f, 11.34f, 10.34f, 10f, 12f, 10f)
+                reflectiveCurveToRelative(3f, 1.34f, 3f, 3f)
+                horizontalLineToRelative(2f)
+                curveTo(17f, 10.24f, 14.76f, 8f, 12f, 8f)
+                close()
+                moveTo(12f, 13f)
+                lineToRelative(3.2f, -2.2f)
+                lineToRelative(1.1f, 1.6f)
+                lineToRelative(-3.3f, 2.3f)
+                curveTo(12.68f, 14.89f, 12.35f, 15f, 12f, 15f)
+                curveTo(10.9f, 15f, 10f, 14.1f, 10f, 13f)
+                curveTo(10f, 11.9f, 10.9f, 11f, 12f, 11f)
+                curveTo(13.1f, 11f, 14f, 11.9f, 14f, 13f)
+                curveTo(14f, 13.17f, 13.98f, 13.34f, 13.94f, 13.5f)
+                close()
+            }.build()
+    }
 }

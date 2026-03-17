@@ -76,7 +76,7 @@ object Routes {
         Tasks,
         Goals,
         BottomRoute(MoneyRoute, "Money", AppIcons.Euro),
-        BottomRoute(WeightRoute, "Weight", AppIcons.RadioButtonUnchecked),
+        BottomRoute(WeightRoute, "Weight", AppIcons.Scale),
         BottomRoute(BirthdaysRoute, "Birthdays", AppIcons.Cake),
         BottomRoute(NotificationsRoute, "Notifications", Icons.Default.Notifications)
     )

@@ -293,7 +293,7 @@ fun MoneyScreen(
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = if (expense.isIncome) "+${displayAmount(expense.amount)}" else "-${displayAmount(expense.amount)}",
+                                    text = if (expense.isIncome) "+${viewModel.formatCurrency(expense.amount)}" else "-${viewModel.formatCurrency(expense.amount)}",
                                     fontWeight = FontWeight.Bold,
                                     color = if (expense.isIncome) MoneyIncomeGreen else MaterialTheme.colorScheme.onSurface
                                 )

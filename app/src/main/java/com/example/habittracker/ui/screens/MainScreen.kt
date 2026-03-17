@@ -21,9 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -78,8 +77,6 @@ private data class MainScreenHeaderState(
 @Composable
 fun MainScreen(
     onOpenMenu: () -> Unit = {},
-    onOpenBirthdays: () -> Unit = {},
-    onOpenNotifications: () -> Unit = {},
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -127,11 +124,31 @@ fun MainScreen(
     var isSeedDataConfirmVisible by rememberSaveable { mutableStateOf(false) }
     var isGlobalDayDetailsDialogVisible by rememberSaveable { mutableStateOf(false) }
     var isHabitDropdownExpanded by rememberSaveable { mutableStateOf(false) }
+    var isSelectedHabitMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var globalDayDetails by remember { mutableStateOf<GlobalDayDetails?>(null) }
     val context = LocalContext.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
+
+    fun openEditSelectedHabit() {
+        val selectedHabit = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }
+        if (selectedHabit != null) {
+            editHabitNameInput = selectedHabit.name
+            editFrequencyTypeInput = selectedHabit.frequencyType
+            editFrequencyIntervalInput = (selectedHabit.frequencyIntervalDays ?: 3).toString()
+            editFrequencyWeekdaysInput = viewModel.parseFrequencyWeekdays(
+                selectedHabit.frequencyWeekdays
+            ).ifEmpty { setOf(DayOfWeek.MONDAY.value) }
+            editReminderEnabledInput = selectedHabit.reminderEnabled
+            editReminderTimesInput = viewModel.parseReminderTimesCsv(selectedHabit.reminderTime)
+                .ifEmpty { listOf("09:00") }
+            editReminderTimeInput = editReminderTimesInput.firstOrNull() ?: "09:00"
+            editReminderMessageInput = selectedHabit.reminderMessage.orEmpty()
+            editReminderTimeError = false
+            isEditDialogVisible = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -143,47 +160,8 @@ fun MainScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            onOpenNotifications()
-                        }
-                    ) {
-                        Icon(AppIcons.NotificationsActive, contentDescription = "Open notifications")
-                    }
-                    IconButton(onClick = onOpenBirthdays) {
-                        Icon(AppIcons.Cake, contentDescription = "Open birthdays")
-                    }
                     TextButton(onClick = { isSeedDataConfirmVisible = true }) {
                         Text("Seed")
-                    }
-                    IconButton(
-                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
-                        onClick = {
-                            val selectedHabit = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }
-                            if (selectedHabit != null) {
-                                editHabitNameInput = selectedHabit.name
-                                editFrequencyTypeInput = selectedHabit.frequencyType
-                                editFrequencyIntervalInput = (selectedHabit.frequencyIntervalDays ?: 3).toString()
-                                editFrequencyWeekdaysInput = viewModel.parseFrequencyWeekdays(
-                                    selectedHabit.frequencyWeekdays
-                                ).ifEmpty { setOf(DayOfWeek.MONDAY.value) }
-                                editReminderEnabledInput = selectedHabit.reminderEnabled
-                                editReminderTimesInput = viewModel.parseReminderTimesCsv(selectedHabit.reminderTime)
-                                    .ifEmpty { listOf("09:00") }
-                                editReminderTimeInput = editReminderTimesInput.firstOrNull() ?: "09:00"
-                                editReminderMessageInput = selectedHabit.reminderMessage.orEmpty()
-                                editReminderTimeError = false
-                                isEditDialogVisible = true
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit selected habit")
-                    }
-                    IconButton(
-                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
-                        onClick = { isDeleteHabitConfirmVisible = true }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete selected habit")
                     }
                 }
             )
@@ -313,12 +291,48 @@ fun MainScreen(
                                 }
 
                                 Box(modifier = Modifier.fillMaxWidth()) {
-                                    OutlinedButton(
-                                        onClick = { isHabitDropdownExpanded = true },
-                                        enabled = screenState.habits.isNotEmpty(),
-                                        modifier = Modifier.fillMaxWidth()
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(selectedHabitLabel)
+                                        OutlinedButton(
+                                            onClick = { isHabitDropdownExpanded = true },
+                                            enabled = screenState.habits.isNotEmpty(),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(selectedHabitLabel)
+                                        }
+                                        Box {
+                                            IconButton(
+                                                enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
+                                                onClick = { isSelectedHabitMenuExpanded = true }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.MoreVert,
+                                                    contentDescription = "Open habit actions"
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = isSelectedHabitMenuExpanded,
+                                                onDismissRequest = { isSelectedHabitMenuExpanded = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Edit habit") },
+                                                    onClick = {
+                                                        isSelectedHabitMenuExpanded = false
+                                                        openEditSelectedHabit()
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete habit") },
+                                                    onClick = {
+                                                        isSelectedHabitMenuExpanded = false
+                                                        isDeleteHabitConfirmVisible = true
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                     DropdownMenu(
                                         expanded = isHabitDropdownExpanded,

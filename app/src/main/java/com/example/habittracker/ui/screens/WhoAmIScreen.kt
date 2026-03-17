@@ -18,9 +18,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -28,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +36,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -292,17 +294,23 @@ private fun NoteCard(
     onSave: (String) -> Unit
 ) {
     var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
+    var isActionsMenuExpanded by rememberSaveable(note.id) { mutableStateOf(false) }
     val reorderStepPx = 72f
     var localContent by rememberSaveable(note.id) { mutableStateOf(note.content) }
     val dragContainerColor = if (isDragging) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .graphicsLayer {
                 translationY = dragOffsetY
             }
@@ -335,7 +343,8 @@ private fun NoteCard(
                         }
                     }
                 )
-            }
+            },
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier
@@ -357,11 +366,29 @@ private fun NoteCard(
                     fontWeight = FontWeight.Bold
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete note")
-                    }
-                    IconButton(onClick = onRename) {
-                        Icon(Icons.Default.Edit, contentDescription = "Rename note")
+                    Box {
+                        IconButton(onClick = { isActionsMenuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Open note actions")
+                        }
+                        DropdownMenu(
+                            expanded = isActionsMenuExpanded,
+                            onDismissRequest = { isActionsMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Rename note") },
+                                onClick = {
+                                    isActionsMenuExpanded = false
+                                    onRename()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete note") },
+                                onClick = {
+                                    isActionsMenuExpanded = false
+                                    onDelete()
+                                }
+                            )
+                        }
                     }
                     Icon(
                         imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,

@@ -9,10 +9,14 @@
 - a personal "Who am I?" notes area
 - categorized tasks with reminders
 - goals and subgoals
+- money/budget tracking with spending history and charting
+- weight tracking with progress charting
 - birthday tracking with one-time reminder timestamps
 - a notifications preview/test screen
 
-The primary live navigation is a bottom navigation bar with five tabs:
+The primary live navigation is split between a bottom navigation bar and a global drawer menu.
+
+Bottom navigation tabs:
 
 - Home
 - Who am I?
@@ -20,8 +24,10 @@ The primary live navigation is a bottom navigation bar with five tabs:
 - Tasks
 - Goals
 
-Two additional screens are reachable from the Home top bar:
+Drawer-only top-level pages:
 
+- Money
+- Weight
 - Birthdays
 - Notifications
 
@@ -122,15 +128,17 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 
 | Route | Entry point | Destination |
 | --- | --- | --- |
-| `birthdays` | Home top bar cake icon | `BirthdaysScreen` |
-| `notifications` | Home top bar bell icon | `NotificationsScreen` |
+| `money` | Drawer item | `MoneyScreen` |
+| `weight` | Drawer item | `WeightScreen` |
+| `birthdays` | Drawer item | `BirthdaysScreen` |
+| `notifications` | Drawer item | `NotificationsScreen` |
 
 ### Navigation notes
 
-- Bottom bar is rendered by the root `Scaffold` in `AppNavGraph`, so it remains visible across all current destinations, including Birthdays and Notifications.
-- Birthdays and Notifications are not bottom-bar items.
-- There is special logic when the user is on `birthdays` and taps the Home bottom tab:
-  - the nav controller tries to pop back to the existing Home destination instead of pushing a duplicate.
+- The root of the app is a `ModalNavigationDrawer` in `AppNavGraph`.
+- All major destinations now open from the burger button in each screen's top bar.
+- Bottom bar remains visible for the main app shell, including drawer-only destinations.
+- Drawer and bottom bar both route through the same top-level navigation helper, so tapping `Home` from Money or Weight returns to the habit screen instead of getting stuck on the current page.
 - There is no route for `StatsScreen`.
 - There is no route for `BlankScreen`.
 
@@ -146,14 +154,13 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - shows a selected habit's month calendar
   - allows creating, editing, deleting, selecting, and completing habits
   - allows attaching notes to individual habit dates
-  - links to Birthdays and Notifications
 - Entry path:
   - bottom nav `Home`
 - Main UI sections:
-  - top app bar with notification, birthdays, seed, edit, delete actions
+  - top app bar with burger menu and `Seed`
   - floating action button for creating a habit
   - global "Month overview" card for all habits
-  - selected-habit monthly card with month navigation and habit picker
+  - selected-habit monthly card with month navigation, habit picker, and 3-dot selected-habit actions menu
 - Data shown:
   - list of habits and their current streaks
   - selected month
@@ -162,14 +169,14 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - global completed/scheduled/birthday/note dates
   - day notes for the selected habit
 - User actions:
-  - open Notifications screen
-  - open Birthdays screen
+  - open drawer menu
   - seed large demo data set
   - add habit
-  - edit selected habit
-  - delete selected habit
   - switch month
   - choose habit from dropdown
+  - open selected-habit 3-dot menu
+  - edit selected habit
+  - delete selected habit
   - tap day on selected habit calendar to toggle completion
   - long-press day on selected habit calendar to open day-note editor
   - tap day on global calendar to open aggregated detail dialog
@@ -232,7 +239,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 - Main UI sections:
   - top bar with `Copy all notes`
   - floating action button for new note
-  - lazy list of note cards
+  - lazy list of tinted note cards with overflow menus
 - Data shown:
   - note title
   - note content when expanded
@@ -241,6 +248,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - expand/collapse note
   - edit note content
   - save note content
+  - open note 3-dot menu
   - rename note
   - delete note
   - copy single note content
@@ -267,9 +275,9 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - bottom nav `Tasks`
 - Main UI sections:
   - top bar with add-category and delete-category actions
-  - category filter chips
-  - pending tasks section
-  - done tasks section
+  - category filter dropdown
+  - tinted pending tasks section
+  - tinted done tasks section
   - floating action button for adding task
 - Data shown:
   - categories
@@ -279,8 +287,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - completed date for done tasks
   - reminder metadata is not shown in rows, only in dialogs
 - User actions:
-  - select category filter
-  - reorder category chips by long-press drag
+  - select category filter from dropdown
   - add category
   - delete current category
   - add task
@@ -305,6 +312,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - pull-to-refresh is cosmetic only
   - add-task dialog chooses category from existing categories only
   - edit-task dialog allows free-text category entry; this can create a task category value that is not present in `task_categories` unless separately added
+  - the main category filter UI no longer exposes category drag-reorder, even though `TasksViewModel` still contains category move logic
 
 ### Task dialogs
 
@@ -343,7 +351,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - floating action button for new goal
   - collapsible `Goals to achieve` section
   - collapsible `Goals achieved` section
-  - expandable goal cards with subgoal rows
+  - expandable tinted goal cards with 3-dot goal action menus and subgoal rows
 - Data shown:
   - goal title
   - goal completion state/date
@@ -351,10 +359,11 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - subgoal completion state/date
 - User actions:
   - add goal
+  - toggle goal done/not done
+  - open goal 3-dot menu
+  - add subgoal
   - rename goal
   - delete goal
-  - toggle goal done/not done
-  - add subgoal
   - rename subgoal
   - delete subgoal
   - toggle subgoal done/not done
@@ -378,11 +387,11 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 - Purpose:
   - manage birthdays and birthday reminder timestamps
 - Entry path:
-  - Home top bar cake icon
+  - drawer `Birthdays`
 - Main UI sections:
-  - top bar with back button
+  - top bar with burger menu
   - floating action button for new birthday
-  - birthday cards list
+  - birthday cards list with per-item 3-dot menus
 - Data shown:
   - name
   - original birthday date including year
@@ -390,6 +399,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - count of reminder timestamps
 - User actions:
   - add birthday
+  - open birthday 3-dot menu
   - edit birthday
   - delete birthday
   - open date picker for birthday date
@@ -413,9 +423,9 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 - Purpose:
   - preview upcoming reminder schedule and manually send a test notification
 - Entry path:
-  - Home top bar bell icon
+  - drawer `Notifications`
 - Main UI sections:
-  - top bar with back and send-test icon
+  - top bar with burger menu and send-test icon
   - secondary `Send test` text button
   - list of future scheduled reminders
 - Data shown:
@@ -423,7 +433,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - reminder message
   - next trigger datetime
 - User actions:
-  - go back
+  - open drawer menu
   - send test notification
 - State/logic:
   - preview list is derived from repository reminder schedule items
@@ -449,6 +459,73 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - centered title and helper text
 - Notes:
   - currently static placeholder content only
+
+### Screen: Money
+
+- File: `app/src/main/java/com/example/habittracker/ui/screens/MoneyScreen.kt`
+- ViewModel: `app/src/main/java/com/example/habittracker/ui/viewmodel/MoneyViewModel.kt`
+- Purpose:
+  - track a budget, hourly wage, spending history, and spending trends
+- Entry path:
+  - drawer `Money`
+- Main UI sections:
+  - top bar with burger menu and budget-settings edit action
+  - budget summary card with hide/show eye toggle
+  - spending graph card
+  - payments list
+  - floating action button for new payment
+- Data shown:
+  - budget amount
+  - total spent
+  - remaining budget
+  - hourly wage
+  - per-payment title, amount, paid date, and hours-cost estimate
+  - charted spending aggregates
+- User actions:
+  - open drawer menu
+  - edit budget amount and hourly wage
+  - hide/show money values
+  - change graph rate: daily, weekly, monthly, yearly
+  - change graph range: weekly, monthly, yearly, custom
+  - pick custom range start/end dates with date picker fields
+  - add payment with title, amount, and payment date
+  - delete payment
+- State/logic:
+  - remaining budget is derived from budget minus total spent
+  - hours cost is `expense amount / hourly wage` when hourly wage is greater than zero
+  - chart points are summed by the selected aggregation level
+  - custom chart ranges normalize reversed start/end selections automatically
+
+### Screen: Weight
+
+- File: `app/src/main/java/com/example/habittracker/ui/screens/WeightScreen.kt`
+- ViewModel: `app/src/main/java/com/example/habittracker/ui/viewmodel/WeightViewModel.kt`
+- Purpose:
+  - track daily body weight and visualize progress over time
+- Entry path:
+  - drawer `Weight`
+- Main UI sections:
+  - top bar with burger menu
+  - progress summary card
+  - weight graph card
+  - daily entry list
+  - floating action button for new weight entry
+- Data shown:
+  - latest weight
+  - change from first recorded weight
+  - charted weight trend
+  - dated list of stored entries
+- User actions:
+  - open drawer menu
+  - change graph rate: daily, weekly, monthly, yearly
+  - change graph range: weekly, monthly, yearly, custom
+  - pick custom range start/end dates with date picker fields
+  - add weight entry with calendar-picked date
+  - delete weight entry
+- State/logic:
+  - chart points use average weight for grouped periods
+  - latest and delta values are derived from the current stored entries
+  - custom chart ranges normalize reversed start/end selections automatically
 
 ### Screen: Stats
 
@@ -487,17 +564,22 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 | Global | Motivation tab | Bottom nav item | Navigates to motivation page | Shows placeholder page | `motivational` | `ui/AppNavGraph.kt` |
 | Global | Tasks tab | Bottom nav item | Navigates to tasks | Shows `TasksScreen` | `tasks` | `ui/AppNavGraph.kt` |
 | Global | Goals tab | Bottom nav item | Navigates to goals | Shows `GoalsScreen` | `goals` | `ui/AppNavGraph.kt` |
-| Home | Bell icon | Icon button | Opens notifications | Shows notifications screen | `notifications` | `ui/screens/MainScreen.kt` |
-| Home | Cake icon | Icon button | Opens birthdays | Shows birthdays screen | `birthdays` | `ui/screens/MainScreen.kt` |
+| Global | Drawer `Home` | Drawer item | Navigates to Home | Returns to habit screen | `home` | `ui/AppNavGraph.kt` |
+| Global | Drawer `Money` | Drawer item | Navigates to Money | Shows budget/spending page | `money` | `ui/AppNavGraph.kt` |
+| Global | Drawer `Weight` | Drawer item | Navigates to Weight | Shows weight tracking page | `weight` | `ui/AppNavGraph.kt` |
+| Global | Drawer `Birthdays` | Drawer item | Navigates to Birthdays | Shows birthday manager | `birthdays` | `ui/AppNavGraph.kt` |
+| Global | Drawer `Notifications` | Drawer item | Navigates to Notifications | Shows reminder preview page | `notifications` | `ui/AppNavGraph.kt` |
+| Home | Burger button | Icon button | Opens drawer | Shows global page list | None | `ui/screens/MainScreen.kt` |
 | Home | `Seed` | Text button | Opens confirmation dialog | Can insert demo data set | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt`, `repository/HabitRepository.kt` |
-| Home | Edit icon | Icon button | Opens edit dialog for selected habit | Loads selected habit values into form | None | `ui/screens/MainScreen.kt` |
-| Home | Delete icon | Icon button | Opens delete-habit confirmation | Can delete selected habit | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt` |
 | Home | FAB `+` | Floating action button | Opens create-habit dialog | Starts new habit flow | None | `ui/screens/MainScreen.kt` |
 | Home | Global month day tap | Calendar tap | Opens day details | Shows birthdays and habit statuses for that day | None | `ui/components/MonthCalendar.kt`, `ui/viewmodel/MainViewModel.kt` |
 | Home | Previous month | Icon button | Moves visible month back | Reloads selected/global month data | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt` |
 | Home | Next month | Icon button | Moves visible month forward | Reloads selected/global month data | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt` |
 | Home | Habit dropdown button | Outlined button | Opens habit menu | Lets user change selected habit | None | `ui/screens/MainScreen.kt` |
 | Home | Habit dropdown item | Dropdown item | Selects habit | Refreshes selected-habit snapshot | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt` |
+| Home | Selected habit 3-dot button | Icon button | Opens selected-habit menu | Shows edit/delete actions | None | `ui/screens/MainScreen.kt` |
+| Home | Selected habit menu `Edit habit` | Dropdown item | Opens edit dialog | Loads selected habit values into form | None | `ui/screens/MainScreen.kt` |
+| Home | Selected habit menu `Delete habit` | Dropdown item | Opens delete-habit confirmation | Can delete selected habit | None | `ui/screens/MainScreen.kt`, `ui/viewmodel/MainViewModel.kt` |
 | Home | Selected calendar day tap | Calendar tap | Toggles completion | Adds/replaces completion record for selected habit/date | None | `ui/components/MonthCalendar.kt`, `ui/viewmodel/MainViewModel.kt`, `repository/HabitRepository.kt` |
 | Home | Selected calendar day long press | Calendar long press | Opens day note dialog | Lets user save or clear day note | None | `ui/components/MonthCalendar.kt`, `ui/screens/MainScreen.kt` |
 | Home | Create habit `More options` | Text button | Expands/collapses advanced form | Reveals date/frequency/reminder controls | None | `ui/screens/MainScreen.kt` |
@@ -516,16 +598,16 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 | Who am I? | Copy all icon | Icon button | Copies all note titles and content | Puts combined text on clipboard | None | `ui/screens/WhoAmIScreen.kt` |
 | Who am I? | FAB `+` | Floating action button | Opens add-note dialog | Starts note creation | None | `ui/screens/WhoAmIScreen.kt` |
 | Who am I? | Note card header tap | Clickable row | Expands/collapses note | Sets `selectedNoteId` | None | `ui/screens/WhoAmIScreen.kt`, `ui/viewmodel/WhoAmIViewModel.kt` |
-| Who am I? | Delete note icon | Icon button | Opens delete dialog | Can remove note | None | `ui/screens/WhoAmIScreen.kt` |
-| Who am I? | Rename note icon | Icon button | Opens rename dialog | Can update title | None | `ui/screens/WhoAmIScreen.kt` |
+| Who am I? | Note 3-dot button | Icon button | Opens note menu | Shows rename/delete actions | None | `ui/screens/WhoAmIScreen.kt` |
+| Who am I? | Note menu `Rename note` | Dropdown item | Opens rename dialog | Can update title | None | `ui/screens/WhoAmIScreen.kt` |
+| Who am I? | Note menu `Delete note` | Dropdown item | Opens delete dialog | Can remove note | None | `ui/screens/WhoAmIScreen.kt` |
 | Who am I? | Copy note icon | Icon button | Copies note content | Clipboard updated | None | `ui/screens/WhoAmIScreen.kt` |
 | Who am I? | Save note | Text button | Persists note content | Updates note content in DB | None | `ui/viewmodel/WhoAmIViewModel.kt`, `repository/HabitRepository.kt` |
 | Who am I? | Long-press drag on note card | Drag gesture | Reorders notes | Updates sort order after debounce | None | `ui/screens/WhoAmIScreen.kt`, `ui/viewmodel/WhoAmIViewModel.kt` |
 | Tasks | Add category icon | Icon button | Opens add-category dialog | Can create category | None | `ui/screens/TasksScreen.kt` |
 | Tasks | Delete category icon | Icon button | Opens delete-category dialog | Can delete selected category and its tasks | None | `ui/screens/TasksScreen.kt`, `ui/viewmodel/TasksViewModel.kt` |
-| Tasks | `All` chip | Assist chip | Selects all-category view | Shows all tasks | None | `ui/screens/TasksScreen.kt`, `ui/viewmodel/TasksViewModel.kt` |
-| Tasks | Category chip tap | Assist chip | Selects category | Filters pending/done lists | None | `ui/screens/TasksScreen.kt`, `ui/viewmodel/TasksViewModel.kt` |
-| Tasks | Category chip long-press drag | Drag gesture | Reorders categories | Persists category sort order after debounce | None | `ui/screens/TasksScreen.kt`, `ui/viewmodel/TasksViewModel.kt` |
+| Tasks | Category filter field | Read-only field + click target | Opens category dropdown | Lets user change active filter | None | `ui/screens/TasksScreen.kt` |
+| Tasks | Category filter item | Dropdown item | Selects category | Filters pending/done lists | None | `ui/screens/TasksScreen.kt`, `ui/viewmodel/TasksViewModel.kt` |
 | Tasks | FAB `+` | Floating action button | Opens add-task dialog | Starts task creation | None | `ui/screens/TasksScreen.kt` |
 | Tasks | Add-task category field | Click target | Opens category dropdown | Selects existing category | None | `ui/screens/TasksScreen.kt` |
 | Tasks | Add reminder date/time | Text button | Opens date then time picker | Adds one-time reminder timestamp | None | `ui/screens/TasksScreen.kt` |
@@ -544,25 +626,41 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 | Goals | `Goals to achieve` header | Clickable card | Expands/collapses section | Shows or hides pending goals | None | `ui/screens/GoalsScreen.kt` |
 | Goals | `Goals achieved` header | Clickable card | Expands/collapses section | Shows or hides completed goals | None | `ui/screens/GoalsScreen.kt` |
 | Goals | Goal main row tap | Clickable row | Toggles goal done/not done | Updates goal completion if allowed | None | `ui/screens/GoalsScreen.kt`, `ui/viewmodel/GoalsViewModel.kt` |
-| Goals | Add subgoal icon | Icon button | Opens add-subgoal dialog | Creates subgoal under target goal | None | `ui/screens/GoalsScreen.kt` |
-| Goals | Delete goal icon | Icon button | Opens delete dialog | Can remove goal | None | `ui/screens/GoalsScreen.kt` |
-| Goals | Rename goal icon | Icon button | Opens rename dialog | Can update goal title | None | `ui/screens/GoalsScreen.kt` |
+| Goals | Goal 3-dot button | Icon button | Opens goal menu | Shows add-subgoal/rename/delete actions | None | `ui/screens/GoalsScreen.kt` |
+| Goals | Goal menu `Add subgoal` | Dropdown item | Opens add-subgoal dialog | Creates subgoal under target goal | None | `ui/screens/GoalsScreen.kt` |
+| Goals | Goal menu `Rename goal` | Dropdown item | Opens rename dialog | Can update goal title | None | `ui/screens/GoalsScreen.kt` |
+| Goals | Goal menu `Delete goal` | Dropdown item | Opens delete dialog | Can remove goal | None | `ui/screens/GoalsScreen.kt` |
 | Goals | Expand goal icon | Icon button | Expands/collapses goal card | Shows or hides subgoals | None | `ui/screens/GoalsScreen.kt` |
 | Goals | Goal card long-press drag | Drag gesture | Reorders goals within section | Updates sort order in DB | None | `ui/screens/GoalsScreen.kt`, `ui/viewmodel/GoalsViewModel.kt` |
 | Goals | Subgoal row tap | Clickable row | Toggles subgoal done/not done | Updates subgoal completion | None | `ui/screens/GoalsScreen.kt`, `ui/viewmodel/GoalsViewModel.kt` |
 | Goals | Delete subgoal icon | Icon button | Opens delete dialog | Can remove subgoal | None | `ui/screens/GoalsScreen.kt` |
 | Goals | Rename subgoal icon | Icon button | Opens rename dialog | Can update subgoal title | None | `ui/screens/GoalsScreen.kt` |
-| Birthdays | Back | Icon button | Pops current destination | Returns to previous screen | Back stack pop | `ui/screens/BirthdaysScreen.kt` |
+| Birthdays | Burger button | Icon button | Opens drawer | Shows global page list | None | `ui/screens/BirthdaysScreen.kt` |
 | Birthdays | FAB `+` | Floating action button | Opens add-birthday dialog | Starts birthday creation | None | `ui/screens/BirthdaysScreen.kt` |
-| Birthdays | Edit birthday | Icon button | Opens edit dialog | Loads existing values into form | None | `ui/screens/BirthdaysScreen.kt` |
-| Birthdays | Delete birthday | Icon button | Opens delete dialog | Can remove birthday | None | `ui/screens/BirthdaysScreen.kt` |
+| Birthdays | Birthday 3-dot button | Icon button | Opens birthday menu | Shows edit/delete actions | None | `ui/screens/BirthdaysScreen.kt` |
+| Birthdays | Birthday menu `Edit birthday` | Dropdown item | Opens edit dialog | Loads existing values into form | None | `ui/screens/BirthdaysScreen.kt` |
+| Birthdays | Birthday menu `Delete birthday` | Dropdown item | Opens delete dialog | Can remove birthday | None | `ui/screens/BirthdaysScreen.kt` |
 | Birthdays | Birthday date field | Disabled field + click target | Opens date picker | Sets birthday date | None | `ui/screens/BirthdaysScreen.kt` |
 | Birthdays | Add reminder date/time | Text button | Opens date then time picker | Adds reminder timestamp | None | `ui/screens/BirthdaysScreen.kt` |
 | Birthdays | Reminder chip | Assist chip | Removes timestamp | Updates reminder draft | None | `ui/screens/BirthdaysScreen.kt` |
 | Birthdays | Add birthday confirm | Text button | Creates birthday | Inserts birthday, updates reminder timestamps, reschedules reminders | None | `ui/viewmodel/BirthdaysViewModel.kt`, `repository/HabitRepository.kt` |
 | Birthdays | Save birthday edits | Text button | Updates birthday | Updates row and reschedules reminders | None | `ui/viewmodel/BirthdaysViewModel.kt`, `repository/HabitRepository.kt` |
 | Birthdays | Delete birthday confirm | Text button | Deletes birthday | Removes birthday and reschedules reminders | None | `ui/viewmodel/BirthdaysViewModel.kt`, `repository/HabitRepository.kt` |
-| Notifications | Back | Icon button | Pops current destination | Returns to previous screen | Back stack pop | `ui/screens/NotificationsScreen.kt` |
+| Money | Budget edit icon | Icon button | Opens budget settings dialog | Can update budget and hourly wage | None | `ui/screens/MoneyScreen.kt` |
+| Money | Budget eye button | Icon button | Hides or shows amounts | Toggles budget/spending visibility | None | `ui/screens/MoneyScreen.kt` |
+| Money | Graph rate chip | Assist chip | Changes aggregation | Rebuilds chart by day/week/month/year | None | `ui/screens/MoneyScreen.kt` |
+| Money | Graph range chip | Assist chip | Changes visible range | Rebuilds chart by week/month/year/custom | None | `ui/screens/MoneyScreen.kt` |
+| Money | Custom date field | Disabled field + click target | Opens date picker | Sets chart custom range boundary | None | `ui/screens/MoneyScreen.kt` |
+| Money | FAB `+` | Floating action button | Opens add-payment dialog | Starts payment creation | None | `ui/screens/MoneyScreen.kt` |
+| Money | Payment date field | Disabled field + click target | Opens date picker | Sets payment date | None | `ui/screens/MoneyScreen.kt` |
+| Money | Delete payment | Icon button | Opens delete confirmation | Can remove payment | None | `ui/screens/MoneyScreen.kt` |
+| Weight | Graph rate chip | Assist chip | Changes aggregation | Rebuilds chart by day/week/month/year | None | `ui/screens/WeightScreen.kt` |
+| Weight | Graph range chip | Assist chip | Changes visible range | Rebuilds chart by week/month/year/custom | None | `ui/screens/WeightScreen.kt` |
+| Weight | Custom date field | Disabled field + click target | Opens date picker | Sets chart custom range boundary | None | `ui/screens/WeightScreen.kt` |
+| Weight | FAB `+` | Floating action button | Opens add-weight dialog | Starts weight-entry creation | None | `ui/screens/WeightScreen.kt` |
+| Weight | Weight date field | Disabled field + click target | Opens date picker | Sets weight-entry date | None | `ui/screens/WeightScreen.kt` |
+| Weight | Delete weight entry | Icon button | Opens delete confirmation | Can remove entry | None | `ui/screens/WeightScreen.kt` |
+| Notifications | Burger button | Icon button | Opens drawer | Shows global page list | None | `ui/screens/NotificationsScreen.kt` |
 | Notifications | Bell icon | Icon button | Sends test notification | Broadcasts directly to `ReminderReceiver` | None | `ui/screens/NotificationsScreen.kt` |
 | Notifications | `Send test` | Text button | Sends test notification | Same as bell action | None | `ui/screens/NotificationsScreen.kt` |
 
@@ -612,6 +710,46 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 - Purpose:
   - local vector implementations for a subset of Material icons
   - used to avoid adding `material-icons-extended`
+
+### `TrendChart`
+
+- File: `app/src/main/java/com/example/habittracker/ui/components/TrendChart.kt`
+- Used by:
+  - `MoneyScreen`
+  - `WeightScreen`
+- What it renders:
+  - line chart with Y-axis numeric labels
+  - X-axis labels
+  - grid lines and axis lines
+- Important inputs:
+  - `points`
+- Notes:
+  - Money uses summed values per bucket
+  - Weight uses average values per bucket
+
+### `DatePickerField`
+
+- File: `app/src/main/java/com/example/habittracker/ui/components/DatePickerField.kt`
+- Used by:
+  - `MoneyScreen`
+  - `WeightScreen`
+- Purpose:
+  - shared disabled text field styled like a form input that opens a date picker when tapped
+
+### `FilterChipsRow`
+
+- File: `app/src/main/java/com/example/habittracker/ui/components/FilterChipsRow.kt`
+- Used by:
+  - `MoneyScreen`
+  - `WeightScreen`
+- Purpose:
+  - reusable horizontal chip row for graph rate/range controls
+
+### `ScaffoldSpacing`
+
+- File: `app/src/main/java/com/example/habittracker/ui/components/ScaffoldSpacing.kt`
+- Purpose:
+  - shared bottom padding value so scrollable content clears floating action buttons
 
 ## ViewModels Overview
 
@@ -678,6 +816,29 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - create/update/delete birthdays
   - reschedule reminders after birthday changes
 
+### `MoneyViewModel`
+
+- File: `app/src/main/java/com/example/habittracker/ui/viewmodel/MoneyViewModel.kt`
+- Used by:
+  - `MoneyScreen`
+- Responsibilities:
+  - combine money settings and expense flows
+  - compute total spent, remaining budget, and per-expense hours cost
+  - save budget settings
+  - add/delete expenses
+  - format currency, hours, and date/time strings
+
+### `WeightViewModel`
+
+- File: `app/src/main/java/com/example/habittracker/ui/viewmodel/WeightViewModel.kt`
+- Used by:
+  - `WeightScreen`
+- Responsibilities:
+  - load weight entries
+  - compute latest weight and delta from first entry
+  - save/delete weight entries
+  - format weight and date strings
+
 ### `NotificationsViewModel`
 
 - File: `app/src/main/java/com/example/habittracker/ui/viewmodel/NotificationsViewModel.kt`
@@ -704,7 +865,7 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 
 - File: `app/src/main/java/com/example/habittracker/data/database/AppDatabase.kt`
 - Database name: `habit_tracker.db`
-- Current version: `17`
+- Current version: `18`
 
 ### Entities
 
@@ -720,6 +881,9 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
 | `SubGoal` | Subgoal under a goal | `goalId`, `title`, `isDone`, `completedAt`, `createdAt` |
 | `Birthday` | Birthday row | `name`, `year`, `month`, `day`, `reminderDateTimesCsv`, `createdAt` |
 | `HomeMonthSnapshot` | Cached home-month state | month key, selected/global sets, serialized note map, updated timestamp |
+| `MoneySettings` | Budget and wage settings | `id`, `budgetAmount`, `hourlyWage` |
+| `MoneyExpense` | Spending/payment history row | `title`, `amount`, `paidAt`, `createdAt` |
+| `WeightEntry` | Daily weight log row | `date`, `weightKg`, `createdAt` |
 | `ReminderSettings` | Settings table | present in DB, not currently used by live UI |
 | `ReminderTime` | Standalone reminder time table | present in DB, not currently used by live UI |
 
@@ -745,6 +909,12 @@ Navigation is defined in `app/src/main/java/com/example/habittracker/ui/AppNavGr
   - CRUD for birthdays
 - `HomeMonthSnapshotDao`
   - persist and restore cached home-month state
+- `MoneySettingsDao`
+  - observe and upsert the single budget/settings row
+- `MoneyExpenseDao`
+  - observe, insert, and delete spending rows
+- `WeightEntryDao`
+  - observe, upsert, and delete weight rows
 - `ReminderSettingsDao`, `ReminderTimeDao`
   - defined but not part of current UI flows
 
@@ -763,6 +933,7 @@ It is responsible for:
 - creating demo data
 - rescheduling-dependent schedule item generation
 - caching/restoring Home snapshots through Room and `SharedPreferences`
+- exposing money settings, expenses, and weight entries as flows
 
 ### Important business rules
 
@@ -780,6 +951,8 @@ It is responsible for:
   - repository still supports fallback daily reminders via `reminderTime`.
 - Birthday reminders:
   - only one-time future timestamps are used.
+- Money and weight:
+  - they currently do not participate in reminder scheduling.
 
 ## Notifications and Background Behavior
 
@@ -950,7 +1123,7 @@ Repository builds reminder schedule items from:
 
 ### Manage birthdays
 
-1. User opens Birthdays from Home.
+1. User opens Birthdays from the drawer.
 2. User taps FAB and enters name/date.
 3. User optionally adds one-time reminder timestamps.
 4. Birthday is inserted and then updated with reminder timestamps.
@@ -958,11 +1131,30 @@ Repository builds reminder schedule items from:
 
 ### Review or test notifications
 
-1. User opens Notifications from Home.
+1. User opens Notifications from the drawer.
 2. Screen lists next future reminder triggers.
 3. User taps bell icon or `Send test`.
 4. Screen sends broadcast directly to `ReminderReceiver`.
 5. Receiver posts a notification if permission exists.
+
+### Track spending and budget
+
+1. User opens `Money` from the drawer.
+2. User edits budget amount and hourly wage if needed.
+3. User taps FAB to add a payment.
+4. User picks payment date from calendar field and saves.
+5. `MoneyViewModel` inserts `MoneyExpense`.
+6. UI recomputes total spent, remaining budget, and hours-cost estimates.
+7. User can change chart rate and time range to inspect spending history.
+
+### Track weight progress
+
+1. User opens `Weight` from the drawer.
+2. User taps FAB to add a weight entry.
+3. User picks date from calendar field and enters kilograms.
+4. `WeightViewModel` upserts the `WeightEntry`.
+5. UI recomputes latest weight, delta from first entry, and trend chart.
+6. User can change chart rate and time range to inspect progress.
 
 ## Uncertain Behavior and Non-Live Code
 
@@ -977,6 +1169,7 @@ Repository builds reminder schedule items from:
 
 - Pull-to-refresh in `WhoAmIScreen`, `TasksScreen`, and `GoalsScreen` is visual only; it does not trigger a repository refresh.
 - Editing a task category uses free text and does not automatically insert that category into `task_categories`.
+- `TasksViewModel.moveCategory(...)` still exists, but the current main Tasks UI no longer exposes category drag-reorder after the filter was changed to a dropdown.
 - `MainViewModel.moveHabit(...)` exists, but Home does not currently expose any UI control that calls it.
 - `StatsViewModel` uses `SavedStateHandle["habitId"]`; if someone manually wires the route without this argument, it will fail fast.
 

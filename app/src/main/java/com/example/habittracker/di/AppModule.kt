@@ -9,9 +9,12 @@ import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
+import com.example.habittracker.data.dao.MoneyExpenseDao
+import com.example.habittracker.data.dao.MoneySettingsDao
 import com.example.habittracker.data.dao.SubGoalDao
 import com.example.habittracker.data.dao.TaskCategoryDao
 import com.example.habittracker.data.dao.TaskDao
+import com.example.habittracker.data.dao.WeightEntryDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.database.AppDatabase
 import com.example.habittracker.data.database.DatabaseMigrations
@@ -49,6 +52,9 @@ object AppModule {
     @Provides fun provideSubGoalDao(database: AppDatabase): SubGoalDao = database.subGoalDao()
     @Provides fun provideBirthdayDao(database: AppDatabase): BirthdayDao = database.birthdayDao()
     @Provides fun provideHomeMonthSnapshotDao(database: AppDatabase): HomeMonthSnapshotDao = database.homeMonthSnapshotDao()
+    @Provides fun provideMoneySettingsDao(database: AppDatabase): MoneySettingsDao = database.moneySettingsDao()
+    @Provides fun provideMoneyExpenseDao(database: AppDatabase): MoneyExpenseDao = database.moneyExpenseDao()
+    @Provides fun provideWeightEntryDao(database: AppDatabase): WeightEntryDao = database.weightEntryDao()
 
     @Provides
     @Singleton
@@ -63,6 +69,9 @@ object AppModule {
         subGoalDao: SubGoalDao,
         birthdayDao: BirthdayDao,
         homeMonthSnapshotDao: HomeMonthSnapshotDao,
+        moneySettingsDao: MoneySettingsDao,
+        moneyExpenseDao: MoneyExpenseDao,
+        weightEntryDao: WeightEntryDao,
         appPreferences: SharedPreferences
     ): HabitRepository {
         return HabitRepository(
@@ -76,6 +85,9 @@ object AppModule {
             subGoalDao = subGoalDao,
             birthdayDao = birthdayDao,
             homeMonthSnapshotDao = homeMonthSnapshotDao,
+            moneySettingsDao = moneySettingsDao,
+            moneyExpenseDao = moneyExpenseDao,
+            weightEntryDao = weightEntryDao,
             appPreferences = appPreferences
         )
     }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import com.example.habittracker.ui.icons.AppIcons
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -30,6 +31,8 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -498,15 +501,21 @@ private fun GoalCard(
 ) {
     var dragOffsetY by remember(goal.id) { mutableFloatStateOf(0f) }
     var cardHeightPx by remember(goal.id) { mutableFloatStateOf(0f) }
+    var isGoalActionsMenuExpanded by rememberSaveable(goal.id) { mutableStateOf(false) }
     val dragContainerColor = if (isDragging) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        MaterialTheme.colorScheme.surface
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
     Card(
         colors = CardDefaults.cardColors(containerColor = dragContainerColor),
         modifier = modifier
             .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(16.dp)
+            )
             .graphicsLayer { translationY = dragOffsetY }
             .zIndex(if (isDragging) 1f else 0f)
             .onSizeChanged { size ->
@@ -541,7 +550,8 @@ private fun GoalCard(
                         }
                     }
                 )
-            }
+            },
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(
             modifier = Modifier
@@ -590,14 +600,36 @@ private fun GoalCard(
                     }
                 }
 
-                IconButton(onClick = onAddSubGoal) {
-                    Icon(Icons.Default.Add, contentDescription = "Add subgoal")
-                }
-                IconButton(onClick = onDeleteGoal) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete goal")
-                }
-                IconButton(onClick = onRenameGoal) {
-                    Icon(Icons.Default.Edit, contentDescription = "Rename goal")
+                Box {
+                    IconButton(onClick = { isGoalActionsMenuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Open goal actions")
+                    }
+                    DropdownMenu(
+                        expanded = isGoalActionsMenuExpanded,
+                        onDismissRequest = { isGoalActionsMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Add subgoal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onAddSubGoal()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Rename goal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onRenameGoal()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete goal") },
+                            onClick = {
+                                isGoalActionsMenuExpanded = false
+                                onDeleteGoal()
+                            }
+                        )
+                    }
                 }
                 IconButton(onClick = onToggleExpanded) {
                     Icon(

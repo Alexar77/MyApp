@@ -14,12 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -159,6 +160,7 @@ fun BirthdaysScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
             ) {
                 items(screenState.birthdays, key = { it.id }) { birthday ->
+                    var isActionsMenuExpanded by rememberSaveable(birthday.id) { mutableStateOf(false) }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier
@@ -194,24 +196,36 @@ fun BirthdaysScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Row {
-                                IconButton(
-                                    onClick = {
-                                        editTarget = birthday
-                                        nameInput = birthday.name
-                                        dateInput = LocalDate.of(
-                                            birthday.year,
-                                            birthday.month,
-                                            birthday.day
-                                        ).toString()
-                                        reminderDateTimes = birthday.reminderDateTimes
-                                        isEditDialogVisible = true
-                                    }
-                                ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit birthday")
+                            Box {
+                                IconButton(onClick = { isActionsMenuExpanded = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Open birthday actions")
                                 }
-                                IconButton(onClick = { pendingDelete = birthday }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete birthday")
+                                DropdownMenu(
+                                    expanded = isActionsMenuExpanded,
+                                    onDismissRequest = { isActionsMenuExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit birthday") },
+                                        onClick = {
+                                            isActionsMenuExpanded = false
+                                            editTarget = birthday
+                                            nameInput = birthday.name
+                                            dateInput = LocalDate.of(
+                                                birthday.year,
+                                                birthday.month,
+                                                birthday.day
+                                            ).toString()
+                                            reminderDateTimes = birthday.reminderDateTimes
+                                            isEditDialogVisible = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete birthday") },
+                                        onClick = {
+                                            isActionsMenuExpanded = false
+                                            pendingDelete = birthday
+                                        }
+                                    )
                                 }
                             }
                         }

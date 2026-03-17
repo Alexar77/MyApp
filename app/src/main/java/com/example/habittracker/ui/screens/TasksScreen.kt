@@ -6,9 +6,9 @@ import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,7 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -221,81 +221,47 @@ fun TasksScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = FabScrollClearance)
             ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        val selected = state.selectedCategory == ALL_CATEGORIES
-                        AssistChip(
-                            onClick = { viewModel.selectCategory(ALL_CATEGORIES) },
-                            label = { Text(ALL_CATEGORIES) },
-                            colors = if (selected) {
-                                AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                                )
-                            } else {
-                                AssistChipDefaults.assistChipColors()
-                            }
-                        )
-                    }
-                }
-                run {
-                    var draggingCategory by remember { mutableStateOf<String?>(null) }
-                    Row(
+                var isCategorySelectorExpanded by rememberSaveable { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = state.selectedCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text("Category filter") },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = AppIcons.SwapHoriz,
+                                contentDescription = "Select category"
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .height(56.dp)
+                            .clickable { isCategorySelectorExpanded = true }
+                    )
+                    DropdownMenu(
+                        expanded = isCategorySelectorExpanded,
+                        onDismissRequest = { isCategorySelectorExpanded = false }
                     ) {
-                        state.categories.forEach { category ->
-                            key(category) {
-                            val selected = state.selectedCategory == category
-                            val isDragging = draggingCategory == category
-                            var dragOffsetX by remember(category) { mutableFloatStateOf(0f) }
-                            val reorderStepPx = 80f
-                            AssistChip(
-                                onClick = { viewModel.selectCategory(category) },
-                                label = { Text(category) },
-                                colors = if (selected) {
-                                    AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                } else {
-                                    AssistChipDefaults.assistChipColors()
-                                },
-                                modifier = Modifier
-                                    .graphicsLayer {
-                                        translationX = dragOffsetX
-                                        alpha = if (isDragging) 0.8f else 1f
-                                    }
-                                    .pointerInput(category) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = category
-                                            },
-                                            onDragEnd = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = null
-                                            },
-                                            onDragCancel = {
-                                                dragOffsetX = 0f
-                                                draggingCategory = null
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                dragOffsetX += dragAmount.x
-                                                while (dragOffsetX > reorderStepPx) {
-                                                    viewModel.moveCategory(category, 1)
-                                                    dragOffsetX -= reorderStepPx
-                                                }
-                                                while (dragOffsetX < -reorderStepPx) {
-                                                    viewModel.moveCategory(category, -1)
-                                                    dragOffsetX += reorderStepPx
-                                                }
-                                            }
-                                        )
-                                    }
-                            )
+                        DropdownMenuItem(
+                            text = { Text(ALL_CATEGORIES) },
+                            onClick = {
+                                viewModel.selectCategory(ALL_CATEGORIES)
+                                isCategorySelectorExpanded = false
                             }
+                        )
+                        state.categories.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category) },
+                                onClick = {
+                                    viewModel.selectCategory(category)
+                                    isCategorySelectorExpanded = false
+                                }
+                            )
                         }
                     }
                 }
@@ -779,21 +745,24 @@ private fun TaskRow(
     var dragOffsetY by remember(task.id) { mutableFloatStateOf(0f) }
     var rowHeightPx by remember(task.id) { mutableFloatStateOf(0f) }
     var menuExpanded by remember { mutableStateOf(false) }
-
-    val dragModifier = if (isDragging) {
-        Modifier
-            .clip(TaskRowShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f))
-            .zIndex(1f)
+    val itemContainerColor = if (isDragging) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
-        Modifier
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(TaskRowShape)
+            .background(itemContainerColor)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                shape = TaskRowShape
+            )
             .graphicsLayer { translationY = dragOffsetY }
-            .then(dragModifier)
+            .zIndex(if (isDragging) 1f else 0f)
             .onSizeChanged { size ->
                 rowHeightPx = size.height.toFloat().coerceAtLeast(1f)
             }

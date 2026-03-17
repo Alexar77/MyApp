@@ -31,7 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.habittracker.ui.icons.AppIcons
-import com.example.habittracker.util.DebugLog
 import com.example.habittracker.ui.viewmodel.BirthdayUiItem
 import com.example.habittracker.ui.viewmodel.BirthdaysViewModel
 import java.time.Instant
@@ -61,9 +59,6 @@ fun BirthdaysScreen(
     viewModel: BirthdaysViewModel = hiltViewModel()
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(screenState.birthdays.size) {
-        DebugLog.d("BirthdaysScreen", "state birthdays=${screenState.birthdays.size}")
-    }
     val context = LocalContext.current
 
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }

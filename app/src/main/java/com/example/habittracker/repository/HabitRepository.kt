@@ -21,7 +21,6 @@ import com.example.habittracker.data.entity.SubGoal
 import com.example.habittracker.data.entity.TaskCategory
 import com.example.habittracker.data.entity.TaskItem
 import com.example.habittracker.data.entity.WhoAmINote
-import com.example.habittracker.util.DebugLog
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -55,7 +54,6 @@ class HabitRepository @Inject constructor(
     private val homeMonthSnapshotDao: HomeMonthSnapshotDao,
     private val appPreferences: SharedPreferences
 ) {
-    private val logTag = "Repository"
 
     companion object {
         const val DEFAULT_TASK_CATEGORY = "General"
@@ -285,7 +283,7 @@ class HabitRepository @Inject constructor(
             habitDayNoteDao.observeNotesForHabitInRange(habitId, startDate, endDate)
         ) { habit, completions, notes ->
             var snapshot: SelectedHabitMonthSnapshot? = null
-            val durationMs = measureTimeMillis {
+            measureTimeMillis {
                 val today = currentBusinessDate()
                 val createdDate = habit?.let { epochMillisToLocalDate(it.createdAt) }
                 val scheduledDates = if (habit == null || createdDate == null) {
@@ -313,10 +311,6 @@ class HabitRepository @Inject constructor(
                     createdDate = createdDate
                 )
             }
-            DebugLog.d(
-                logTag,
-                "selected month snapshot month=$month habitId=$habitId completions=${completions.size} notes=${notes.size} scheduled=${snapshot?.scheduledDates?.size ?: 0} durationMs=$durationMs"
-            )
             snapshot ?: SelectedHabitMonthSnapshot(
                 habitId = habit?.id,
                 month = month,
@@ -339,7 +333,7 @@ class HabitRepository @Inject constructor(
             birthdayDao.observeAll()
         ) { habits, completions, notes, birthdays ->
             var snapshot: GlobalMonthSnapshot? = null
-            val durationMs = measureTimeMillis {
+            measureTimeMillis {
                 val today = currentBusinessDate()
                 val completedByHabit = completions.asSequence()
                     .filter { it.completed }
@@ -401,10 +395,6 @@ class HabitRepository @Inject constructor(
                     businessToday = today
                 )
             }
-            DebugLog.d(
-                logTag,
-                "global month snapshot month=$month habits=${habits.size} completionRows=${completions.size} noteRows=${notes.size} birthdays=${birthdays.size} scheduledDays=${snapshot?.globalScheduledDates?.size ?: 0} durationMs=$durationMs"
-            )
             snapshot ?: GlobalMonthSnapshot(
                 month = month,
                 globalCompletedDates = emptySet(),
@@ -434,10 +424,6 @@ class HabitRepository @Inject constructor(
     suspend fun persistHomeMonthSnapshot(snapshot: HomeMonthSnapshotState) {
         homeMonthSnapshotDao.upsert(snapshot.toEntity())
         cacheHomeMonthSnapshot(snapshot)
-        DebugLog.d(
-            logTag,
-            "persisted home snapshot month=${snapshot.month} selected=${snapshot.selectedHabitId} selectedScheduled=${snapshot.selectedScheduledDates.size} globalScheduled=${snapshot.globalScheduledDates.size}"
-        )
     }
 
     suspend fun refreshHomeMonthSnapshot(
@@ -1101,7 +1087,6 @@ class HabitRepository @Inject constructor(
             .filter { it.completed }
             .groupBy(keySelector = { it.habitId }, valueTransform = { it.date })
             .mapValues { (_, dates) -> dates.toSet() }
-        val dayNotesByHabitAndDate = notes.associate { (it.habitId to it.date) to it.note }
         val selectedHabit = habits.firstOrNull { it.id == effectiveSelectedHabitId }
         val selectedCreatedDate = selectedHabit?.let { epochMillisToLocalDate(it.createdAt) }
         val selectedScheduledDates = if (selectedHabit == null || selectedCreatedDate == null) {

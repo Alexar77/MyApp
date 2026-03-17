@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
-import com.example.habittracker.util.DebugLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import javax.inject.Inject
@@ -33,7 +32,6 @@ class BirthdaysViewModel @Inject constructor(
     private val repository: HabitRepository,
     private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
-    private val logTag = "BirthdaysVM"
 
     private val mutableUiState = MutableStateFlow(BirthdaysUiState())
     val uiState: StateFlow<BirthdaysUiState> = mutableUiState.asStateFlow()
@@ -41,7 +39,6 @@ class BirthdaysViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             repository.observeBirthdays().collect { birthdayItems ->
-                DebugLog.d(logTag, "flow update birthdays=${birthdayItems.size}")
                 val today = repository.currentBusinessDate()
                 val sorted = birthdayItems
                     .map { birthday ->
@@ -67,13 +64,11 @@ class BirthdaysViewModel @Inject constructor(
                 mutableUiState.update { currentState ->
                     currentState.copy(birthdays = sorted)
                 }
-                DebugLog.d(logTag, "uiState publish birthdays=${sorted.size}")
             }
         }
     }
 
     fun addBirthday(name: String, date: LocalDate, reminderDateTimes: List<Long>) {
-        DebugLog.d(logTag, "addBirthday nameLength=${name.length} date=$date reminders=${reminderDateTimes.size}")
         viewModelScope.launch {
             val id = repository.addBirthday(
                 name = name,
@@ -90,17 +85,15 @@ class BirthdaysViewModel @Inject constructor(
                     day = date.dayOfMonth,
                     reminderDateTimesCsv = reminderDateTimes.joinToString("|")
                 )
-                rescheduleReminders("addBirthday")
-                DebugLog.d(logTag, "addBirthday completed id=$id")
+                rescheduleReminders()
             }
         }
     }
 
     fun deleteBirthday(id: Long) {
-        DebugLog.d(logTag, "deleteBirthday id=$id")
         viewModelScope.launch {
             repository.deleteBirthday(id)
-            rescheduleReminders("deleteBirthday")
+            rescheduleReminders()
         }
     }
 
@@ -110,7 +103,6 @@ class BirthdaysViewModel @Inject constructor(
         date: LocalDate,
         reminderDateTimes: List<Long>
     ) {
-        DebugLog.d(logTag, "updateBirthday id=$id date=$date reminders=${reminderDateTimes.size}")
         viewModelScope.launch {
             repository.updateBirthday(
                 birthdayId = id,
@@ -120,14 +112,12 @@ class BirthdaysViewModel @Inject constructor(
                 day = date.dayOfMonth,
                 reminderDateTimesCsv = reminderDateTimes.joinToString("|")
             )
-            rescheduleReminders("updateBirthday")
-            DebugLog.d(logTag, "updateBirthday completed id=$id")
+            rescheduleReminders()
         }
     }
 
-    private suspend fun rescheduleReminders(reason: String) {
+    private suspend fun rescheduleReminders() {
         val reminders = repository.getReminderScheduleItems()
-        DebugLog.d(logTag, "rescheduleReminders reason=$reason count=${reminders.size}")
         reminderScheduler.rescheduleAll(reminders)
     }
 }

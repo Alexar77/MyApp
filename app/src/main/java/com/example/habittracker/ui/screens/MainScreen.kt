@@ -62,7 +62,6 @@ import com.example.habittracker.ui.components.MonthCalendar
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.GlobalDayDetails
 import com.example.habittracker.ui.viewmodel.MainViewModel
-import com.example.habittracker.util.DebugLog
 import com.example.habittracker.repository.HabitRepository.HabitFrequencyType
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -89,20 +88,6 @@ fun MainScreen(
     val headerState = remember(screenState.selectedMonth) {
         MainScreenHeaderState(
             monthLabel = screenState.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-        )
-    }
-    LaunchedEffect(
-        screenState.habits.size,
-        screenState.selectedHabitId,
-        screenState.selectedMonth,
-        screenState.completedDates.size,
-        screenState.scheduledDates.size,
-        screenState.globalCompletedDates.size,
-        screenState.globalScheduledDates.size
-    ) {
-        DebugLog.d(
-            "MainScreen",
-            "state habits=${screenState.habits.size} selected=${screenState.selectedHabitId} month=${screenState.selectedMonth} scheduled=${screenState.scheduledDates.size} completed=${screenState.completedDates.size} globalScheduled=${screenState.globalScheduledDates.size}"
         )
     }
 

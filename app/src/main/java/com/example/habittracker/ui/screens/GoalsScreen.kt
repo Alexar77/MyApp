@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.habittracker.util.DebugLog
 import com.example.habittracker.ui.viewmodel.GoalUiItem
 import com.example.habittracker.ui.viewmodel.GoalsViewModel
 import com.example.habittracker.ui.viewmodel.SubGoalUiItem
@@ -71,19 +70,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val completedGoalsCount = remember(state.goals) { state.goals.count { it.isDone } }
-    val totalSubGoalsCount = remember(state.goals) { state.goals.sumOf { it.subGoals.size } }
     val goalsToAchieve by remember(state.goals) {
         derivedStateOf { state.goals.filter { !it.isDone } }
     }
     val goalsAchieved by remember(state.goals) {
         derivedStateOf { state.goals.filter { it.isDone } }
-    }
-    LaunchedEffect(state.goals.size, completedGoalsCount, totalSubGoalsCount) {
-        DebugLog.d(
-            "GoalsScreen",
-            "state goals=${state.goals.size} done=$completedGoalsCount subGoals=$totalSubGoalsCount"
-        )
     }
     var expandedGoalIds by remember { mutableStateOf(setOf<Long>()) }
 

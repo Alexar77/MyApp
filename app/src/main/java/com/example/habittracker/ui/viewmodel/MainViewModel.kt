@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
-import com.example.habittracker.util.DebugLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import java.time.YearMonth
@@ -72,7 +71,6 @@ class MainViewModel @Inject constructor(
     private val habitRepository: HabitRepository,
     private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
-    private val logTag = "MainVM"
     private val initialMonth = YearMonth.from(habitRepository.currentBusinessDate())
     private val initialPersistedSnapshot = habitRepository.peekPersistedHomeMonthSnapshot(initialMonth)
     private val initialHabitOptions = habitRepository.peekCachedHabitOptions().map { option ->
@@ -154,10 +152,6 @@ class MainViewModel @Inject constructor(
                 } else {
                     orderedHabitUiOptions.firstOrNull()?.id
                 }
-                DebugLog.d(
-                    logTag,
-                    "habit options update count=${orderedHabitUiOptions.size} selected=$currentlySelectedHabitId resolved=$resolvedSelectedHabitId pendingOrder=${pendingHabitOrderIds?.size ?: 0}"
-                )
                 mutableUiState.update { currentState ->
                     currentState.copy(
                         habits = orderedHabitUiOptions,
@@ -166,10 +160,6 @@ class MainViewModel @Inject constructor(
                     )
                 }
                 if (!selectionStillValid) {
-                    DebugLog.d(
-                        logTag,
-                        "selection invalid old=$currentlySelectedHabitId new=$resolvedSelectedHabitId"
-                    )
                     selectedHabitIdFlow.value = resolvedSelectedHabitId
                 }
             }
@@ -204,10 +194,6 @@ class MainViewModel @Inject constructor(
                     selectedHabitCreatedDate = persistedSnapshot.selectedHabitCreatedDate,
                     businessToday = persistedSnapshot.businessToday,
                     isDataLoaded = false
-                )
-                DebugLog.d(
-                    logTag,
-                    "applied persisted snapshot month=${persistedSnapshot.month} selected=${persistedSnapshot.selectedHabitId} globalScheduled=${persistedSnapshot.globalScheduledDates.size}"
                 )
                 mutableUiState.value = snapshotUiState
             }
@@ -249,18 +235,10 @@ class MainViewModel @Inject constructor(
                     return@combine null
                 }
                 if (selectedHabitId != null && habits.isEmpty()) {
-                    DebugLog.d(
-                        logTag,
-                        "uiState publish skipped awaitingHabits month=$selectedMonth selected=$selectedHabitId"
-                    )
                     return@combine null
                 }
                 val selectedStateIsReady = selectedHabitId == null || selectedSnapshot.habitId == selectedHabitId
                 if (!selectedStateIsReady) {
-                    DebugLog.d(
-                        logTag,
-                        "uiState publish skipped staleSelectedSnapshot month=$selectedMonth selected=$selectedHabitId snapshot=${selectedSnapshot.habitId}"
-                    )
                     return@combine null
                 }
 
@@ -287,20 +265,12 @@ class MainViewModel @Inject constructor(
                 val combinedState = combinedResult.first
                 val globalSnapshot = combinedResult.second
                 if (combinedState.habits.isNotEmpty() && combinedState.selectedHabitId == null) {
-                    DebugLog.d(
-                        logTag,
-                        "uiState publish skipped missingSelection month=${combinedState.selectedMonth} habits=${combinedState.habits.size}"
-                    )
                     return@collect
                 }
 
                 globalDayDetailsCache = globalSnapshot.dayDetailsByDate
                 globalBirthdayNamesByDateCache = globalSnapshot.birthdayNamesByDate
 
-                DebugLog.d(
-                    logTag,
-                    "uiState publish month=${combinedState.selectedMonth} selected=${combinedState.selectedHabitId} habits=${combinedState.habits.size} loaded=${combinedState.isDataLoaded}"
-                )
                 mutableUiState.value = combinedState
                 if (combinedState.isDataLoaded) {
                     launch {
@@ -357,10 +327,6 @@ class MainViewModel @Inject constructor(
         reminderTime: String?,
         reminderMessage: String?
     ): Boolean {
-        DebugLog.d(
-            logTag,
-            "addHabit requested nameLength=${habitName.length} createdDateText=$createdDateText frequency=$frequencyType weekdays=${frequencyWeekdays.size} reminderEnabled=$reminderEnabled"
-        )
         val createdAtMillis = createdDateText
             ?.takeIf { it.isNotBlank() }
             ?.let {
@@ -368,12 +334,10 @@ class MainViewModel @Inject constructor(
                     val parsed = LocalDate.parse(it)
                     habitRepository.localDateToEpochMillis(parsed)
                 }.getOrNull() ?: run {
-                    DebugLog.d(logTag, "addHabit rejected invalid createdDateText=$createdDateText")
                     return false
                 }
             }
         if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) {
-            DebugLog.d(logTag, "addHabit rejected invalid reminderTime=$reminderTime")
             return false
         }
 
@@ -392,8 +356,7 @@ class MainViewModel @Inject constructor(
                 month = selectedMonthFlow.value,
                 selectedHabitId = selectedHabitIdFlow.value
             )
-            rescheduleReminders("addHabit")
-            DebugLog.d(logTag, "addHabit completed name=$habitName")
+            rescheduleReminders()
         }
         return true
     }
@@ -409,10 +372,8 @@ class MainViewModel @Inject constructor(
     ): Boolean {
         val selectedId = selectedHabitIdFlow.value ?: return false
         if (reminderEnabled && !habitRepository.isValidReminderTimesCsv(reminderTime)) {
-            DebugLog.d(logTag, "updateSelectedHabit rejected invalid reminderTime=$reminderTime selectedId=$selectedId")
             return false
         }
-        DebugLog.d(logTag, "updateSelectedHabit selectedId=$selectedId frequency=$frequencyType reminderEnabled=$reminderEnabled")
         viewModelScope.launch {
             habitRepository.updateHabit(
                 habitId = selectedId,
@@ -428,14 +389,12 @@ class MainViewModel @Inject constructor(
                 month = selectedMonthFlow.value,
                 selectedHabitId = selectedId
             )
-            rescheduleReminders("updateSelectedHabit")
-            DebugLog.d(logTag, "updateSelectedHabit completed selectedId=$selectedId")
+            rescheduleReminders()
         }
         return true
     }
 
     fun selectHabit(habitId: Long) {
-        DebugLog.d(logTag, "selectHabit habitId=$habitId")
         selectedHabitIdFlow.value = habitId
         viewModelScope.launch {
             habitRepository.refreshHomeMonthSnapshot(
@@ -446,7 +405,6 @@ class MainViewModel @Inject constructor(
     }
 
     fun moveHabit(habitId: Long, direction: Int) {
-        DebugLog.d(logTag, "moveHabit habitId=$habitId direction=$direction")
         val habits = habitsStateFlow.value.ifEmpty { mutableUiState.value.habits }
         val fromIndex = habits.indexOfFirst { it.id == habitId }
         if (fromIndex == -1) return
@@ -467,7 +425,6 @@ class MainViewModel @Inject constructor(
         habitReorderJob?.cancel()
         habitReorderJob = viewModelScope.launch {
             delay(300)
-            DebugLog.d(logTag, "persist habit reorder count=${reordered.size}")
             habitRepository.reorderHabits(reordered.map { it.id })
             habitRepository.refreshHomeMonthSnapshot(
                 month = selectedMonthFlow.value,
@@ -479,43 +436,37 @@ class MainViewModel @Inject constructor(
 
     fun deleteSelectedHabit() {
         val selectedId = selectedHabitIdFlow.value ?: return
-        DebugLog.d(logTag, "deleteSelectedHabit selectedId=$selectedId")
         viewModelScope.launch {
             habitRepository.deleteHabit(selectedId)
             habitRepository.refreshHomeMonthSnapshot(
                 month = selectedMonthFlow.value,
                 selectedHabitId = selectedHabitIdFlow.value
             )
-            rescheduleReminders("deleteSelectedHabit")
+            rescheduleReminders()
         }
     }
 
     fun seedTestData() {
-        DebugLog.d(logTag, "seedTestData requested")
         viewModelScope.launch {
             habitRepository.seedTestData()
             habitRepository.refreshHomeMonthSnapshot(
                 month = selectedMonthFlow.value,
                 selectedHabitId = selectedHabitIdFlow.value
             )
-            rescheduleReminders("seedTestData")
-            DebugLog.d(logTag, "seedTestData completed")
+            rescheduleReminders()
         }
     }
 
     fun showPreviousMonth() {
-        DebugLog.d(logTag, "showPreviousMonth from=${selectedMonthFlow.value}")
         selectedMonthFlow.update { currentMonth -> currentMonth.minusMonths(1) }
     }
 
     fun showNextMonth() {
-        DebugLog.d(logTag, "showNextMonth from=${selectedMonthFlow.value}")
         selectedMonthFlow.update { currentMonth -> currentMonth.plusMonths(1) }
     }
 
     fun toggleDay(date: String) {
         val selectedId = selectedHabitIdFlow.value ?: return
-        DebugLog.d(logTag, "toggleDay date=$date selectedId=$selectedId")
         val uiStateSnapshot = mutableUiState.value
         val selectedHabit = uiStateSnapshot.habits.firstOrNull { it.id == selectedId }
             ?: habitsStateFlow.value.firstOrNull { it.id == selectedId }
@@ -524,7 +475,6 @@ class MainViewModel @Inject constructor(
         val targetDate = runCatching { LocalDate.parse(date) }.getOrNull() ?: return
         val today = habitRepository.currentBusinessDate()
         if (targetDate.isBefore(createdDate) || targetDate.isAfter(today)) {
-            DebugLog.d(logTag, "toggleDay rejected outOfRange date=$date createdDate=$createdDate today=$today")
             return
         }
         val scheduled = habitRepository.isScheduledOnDate(
@@ -535,7 +485,6 @@ class MainViewModel @Inject constructor(
             frequencyWeekdays = selectedHabit.frequencyWeekdays
         )
         if (!scheduled) {
-            DebugLog.d(logTag, "toggleDay rejected unscheduled date=$date selectedId=$selectedId")
             return
         }
         viewModelScope.launch {
@@ -544,13 +493,11 @@ class MainViewModel @Inject constructor(
                 month = selectedMonthFlow.value,
                 selectedHabitId = selectedId
             )
-            DebugLog.d(logTag, "toggleDay completed date=$date selectedId=$selectedId")
         }
     }
 
     fun saveDayNote(date: String, note: String) {
         val selectedId = selectedHabitIdFlow.value ?: return
-        DebugLog.d(logTag, "saveDayNote selectedId=$selectedId date=$date noteLength=${note.length}")
         viewModelScope.launch {
             habitRepository.saveHabitDayNote(selectedId, date, note)
             habitRepository.refreshHomeMonthSnapshot(
@@ -585,13 +532,11 @@ class MainViewModel @Inject constructor(
             habits = habits,
             birthdayNames = birthdays
         )
-        DebugLog.d(logTag, "getGlobalDayDetails date=$date habits=${result.habits.size} birthdays=${result.birthdayNames.size}")
         return result
     }
 
-    private suspend fun rescheduleReminders(reason: String) {
+    private suspend fun rescheduleReminders() {
         val reminders = habitRepository.getReminderScheduleItems()
-        DebugLog.d(logTag, "rescheduleReminders reason=$reason count=${reminders.size}")
         reminderScheduler.rescheduleAll(reminders)
     }
 }

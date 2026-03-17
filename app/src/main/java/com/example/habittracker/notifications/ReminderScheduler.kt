@@ -4,8 +4,11 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDateTime
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -14,63 +17,154 @@ class ReminderScheduler @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun rescheduleAll(times: List<String>, habitsEnabled: Boolean, tasksEnabled: Boolean) {
-        cancelAll()
-        if (!habitsEnabled && !tasksEnabled) return
+    fun rescheduleAll(items: List<HabitRepository.ReminderScheduleItem>) {
+        val previousRequestCodes = prefs.getStringSet(KEY_REQUEST_CODES, emptySet())
+            ?.mapNotNull { it.toIntOrNull() }
+            .orEmpty()
 
-        times.forEach { timeValue ->
-            scheduleAtTime(timeValue, habitsEnabled, tasksEnabled)
+        previousRequestCodes.forEach { cancelByRequestCode(it) }
+
+        val nextRequestCodes = mutableSetOf<String>()
+        items.forEach { item ->
+            val requestCode = schedule(item)
+            nextRequestCodes += requestCode.toString()
         }
+
+        prefs.edit().putStringSet(KEY_REQUEST_CODES, nextRequestCodes).apply()
     }
 
-    fun scheduleAtTime(timeValue: String, habitsEnabled: Boolean, tasksEnabled: Boolean) {
-        val parts = timeValue.split(":")
-        if (parts.size != 2) return
-        val hour = parts[0].toIntOrNull() ?: return
-        val minute = parts[1].toIntOrNull() ?: return
+    fun schedule(item: HabitRepository.ReminderScheduleItem): Int {
+        if (item.triggerAtMillis != null) {
+            return scheduleAtMillis(item)
+        }
+
+        val parts = item.timeValue.split(":")
+        if (parts.size != 2) return requestCodeFor(item.uniqueKey)
+
+        val hour = parts[0].toIntOrNull() ?: return requestCodeFor(item.uniqueKey)
+        val minute = parts[1].toIntOrNull() ?: return requestCodeFor(item.uniqueKey)
 
         val now = LocalDateTime.now()
         var target = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
         if (!target.isAfter(now)) target = target.plusDays(1)
 
+        val requestCode = requestCodeFor(item.uniqueKey)
         val intent = Intent(context, ReminderReceiver::class.java).apply {
-            putExtra(ReminderReceiver.EXTRA_TIME, timeValue)
-            putExtra(ReminderReceiver.EXTRA_HABITS, habitsEnabled)
-            putExtra(ReminderReceiver.EXTRA_TASKS, tasksEnabled)
+            putExtra(ReminderReceiver.EXTRA_UNIQUE_KEY, item.uniqueKey)
+            putExtra(ReminderReceiver.EXTRA_TIME, item.timeValue)
+            putExtra(ReminderReceiver.EXTRA_TITLE, item.title)
+            putExtra(ReminderReceiver.EXTRA_MESSAGE, item.message)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            requestCodeForTime(hour, minute),
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            target.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            pendingIntent
-        )
+        val triggerAtMillis = target.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        try {
+            val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+
+            if (canUseExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        } catch (_: SecurityException) {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
+
+        return requestCode
     }
 
-    fun cancelAll() {
-        for (minuteOfDay in 0 until 24 * 60) {
-            val hour = minuteOfDay / 60
-            val minute = minuteOfDay % 60
-            val intent = Intent(context, ReminderReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                requestCodeForTime(hour, minute),
-                intent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )
-            if (pendingIntent != null) {
-                alarmManager.cancel(pendingIntent)
-                pendingIntent.cancel()
+    private fun scheduleAtMillis(item: HabitRepository.ReminderScheduleItem): Int {
+        val triggerAtMillis = item.triggerAtMillis ?: return requestCodeFor(item.uniqueKey)
+        val requestCode = requestCodeFor(item.uniqueKey)
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            putExtra(ReminderReceiver.EXTRA_UNIQUE_KEY, item.uniqueKey)
+            putExtra(ReminderReceiver.EXTRA_TIME, item.timeValue)
+            putExtra(ReminderReceiver.EXTRA_TITLE, item.title)
+            putExtra(ReminderReceiver.EXTRA_MESSAGE, item.message)
+            putExtra(ReminderReceiver.EXTRA_SKIP_RESCHEDULE, true)
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        try {
+            val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
             }
+
+            if (canUseExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        } catch (_: SecurityException) {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
+
+        return requestCode
+    }
+
+    private fun cancelByRequestCode(requestCode: Int) {
+        val intent = Intent(context, ReminderReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
         }
     }
 
-    private fun requestCodeForTime(hour: Int, minute: Int): Int = hour * 100 + minute
+    private fun requestCodeFor(uniqueKey: String): Int = uniqueKey.hashCode()
+
+    companion object {
+        private const val PREFS_NAME = "reminder_scheduler"
+        private const val KEY_REQUEST_CODES = "scheduled_request_codes"
+    }
 }

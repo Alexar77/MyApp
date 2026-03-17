@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.habittracker.repository.HabitRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -19,7 +22,8 @@ data class WhoAmINoteUiState(
 
 data class WhoAmIUiState(
     val notes: List<WhoAmINoteUiState> = emptyList(),
-    val selectedNoteId: Long? = null
+    val selectedNoteId: Long? = null,
+    val savingNoteId: Long? = null
 )
 
 @HiltViewModel
@@ -29,10 +33,12 @@ class WhoAmIViewModel @Inject constructor(
 
     private val mutableUiState = MutableStateFlow(WhoAmIUiState())
     val uiState: StateFlow<WhoAmIUiState> = mutableUiState.asStateFlow()
+    private var contentSaveJob: Job? = null
+    private var reorderJob: Job? = null
 
     init {
         viewModelScope.launch {
-            habitRepository.observeWhoAmINotes().collect { notes ->
+            habitRepository.observeWhoAmINotes().distinctUntilChanged().collect { notes ->
                 val noteUiList = notes.map { note ->
                     WhoAmINoteUiState(id = note.id, title = note.title, content = note.content)
                 }
@@ -67,12 +73,58 @@ class WhoAmIViewModel @Inject constructor(
 
     fun updateSelectedNoteContent(content: String) {
         val selectedId = mutableUiState.value.selectedNoteId ?: return
-        viewModelScope.launch { habitRepository.updateWhoAmINoteContent(selectedId, content) }
+        // Update local UI state so the text field reflects the change immediately
+        mutableUiState.update { state ->
+            state.copy(
+                notes = state.notes.map { note ->
+                    if (note.id == selectedId) note.copy(content = content) else note
+                }
+            )
+        }
+    }
+
+    fun saveNoteContent(noteId: Long, content: String) {
+        contentSaveJob?.cancel()
+        contentSaveJob = viewModelScope.launch {
+            mutableUiState.update { it.copy(savingNoteId = noteId) }
+            habitRepository.updateWhoAmINoteContent(noteId, content)
+            delay(400)
+            mutableUiState.update { it.copy(savingNoteId = null) }
+        }
+    }
+
+    fun renameNote(note: WhoAmINoteUiState, title: String) {
+        viewModelScope.launch {
+            habitRepository.renameWhoAmINote(note.id, title)
+        }
     }
 
     fun deleteNote(note: WhoAmINoteUiState) {
         viewModelScope.launch {
             habitRepository.deleteWhoAmINote(note.id)
+        }
+    }
+
+    fun moveNote(noteId: Long, direction: Int) {
+        val sourceList = mutableUiState.value.notes
+        val fromIndex = sourceList.indexOfFirst { it.id == noteId }
+        if (fromIndex == -1) return
+
+        val toIndex = (fromIndex + direction).coerceIn(0, sourceList.lastIndex)
+        if (toIndex == fromIndex) return
+
+        val reordered = sourceList.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+
+        // Update UI immediately
+        mutableUiState.update { it.copy(notes = reordered) }
+
+        // Debounce DB write
+        reorderJob?.cancel()
+        reorderJob = viewModelScope.launch {
+            delay(300)
+            habitRepository.reorderWhoAmINotes(reordered.map { it.id })
         }
     }
 }

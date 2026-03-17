@@ -9,8 +9,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface HabitCompletionDao {
+    @Query("SELECT * FROM habit_completions")
+    fun observeAllCompletions(): Flow<List<HabitCompletion>>
+
     @Query("SELECT * FROM habit_completions WHERE date BETWEEN :startDate AND :endDate")
     fun observeCompletionsInRange(startDate: String, endDate: String): Flow<List<HabitCompletion>>
+
+    @Query("SELECT * FROM habit_completions WHERE date BETWEEN :startDate AND :endDate")
+    suspend fun getCompletionsInRange(startDate: String, endDate: String): List<HabitCompletion>
+
+    @Query("SELECT * FROM habit_completions WHERE habitId = :habitId AND date BETWEEN :startDate AND :endDate")
+    fun observeCompletionsForHabitInRange(habitId: Long, startDate: String, endDate: String): Flow<List<HabitCompletion>>
+
+    @Query("SELECT * FROM habit_completions WHERE habitId = :habitId AND date BETWEEN :startDate AND :endDate")
+    suspend fun getCompletionsForHabitInRange(habitId: Long, startDate: String, endDate: String): List<HabitCompletion>
 
     @Query("SELECT * FROM habit_completions WHERE habitId = :habitId")
     fun observeCompletionsForHabit(habitId: Long): Flow<List<HabitCompletion>>

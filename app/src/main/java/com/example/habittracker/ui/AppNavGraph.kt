@@ -3,10 +3,9 @@ package com.example.habittracker.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Alarm
-import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -20,9 +19,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.screens.GoalsScreen
+import com.example.habittracker.ui.screens.BirthdaysScreen
 import com.example.habittracker.ui.screens.MainScreen
-import com.example.habittracker.ui.screens.RemindersScreen
+import com.example.habittracker.ui.screens.MotivationScreen
+import com.example.habittracker.ui.screens.NotificationsScreen
 import com.example.habittracker.ui.screens.TasksScreen
 import com.example.habittracker.ui.screens.WhoAmIScreen
 
@@ -35,10 +37,12 @@ data class BottomRoute(
 object Routes {
     val Home = BottomRoute("home", "Home", Icons.Default.Home)
     val WhoAmI = BottomRoute("who_am_i", "Who am I?", Icons.Default.Person)
+    val Motivation = BottomRoute("motivational", "Motivation", Icons.Default.Star)
     val Tasks = BottomRoute("tasks", "Tasks", Icons.AutoMirrored.Filled.List)
-    val Goals = BottomRoute("goals", "Goals", Icons.Default.Flag)
-    val Reminders = BottomRoute("reminders", "Reminders", Icons.Default.Alarm)
-    val BottomItems = listOf(Home, WhoAmI, Tasks, Goals, Reminders)
+    val Goals = BottomRoute("goals", "Goals", AppIcons.Flag)
+    const val BirthdaysRoute = "birthdays"
+    const val NotificationsRoute = "notifications"
+    val BottomItems = listOf(Home, WhoAmI, Motivation, Tasks, Goals)
 }
 
 @Composable
@@ -54,12 +58,19 @@ fun AppNavGraph() {
                     NavigationBarItem(
                         selected = currentRoute == item.route,
                         onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
+                            if (currentRoute == Routes.BirthdaysRoute && item.route == Routes.Home.route) {
+                                val popped = navController.popBackStack(Routes.Home.route, false)
+                                if (!popped) {
+                                    navController.navigate(Routes.Home.route) { launchSingleTop = true }
                                 }
-                                launchSingleTop = true
-                                restoreState = true
+                            } else {
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
                         },
                         icon = { Icon(item.icon, contentDescription = item.label) },
@@ -74,11 +85,26 @@ fun AppNavGraph() {
             startDestination = Routes.Home.route,
             modifier = Modifier.padding(padding)
         ) {
-            composable(Routes.Home.route) { MainScreen() }
+            composable(Routes.Home.route) {
+                MainScreen(
+                    onOpenBirthdays = {
+                        navController.navigate(Routes.BirthdaysRoute) { launchSingleTop = true }
+                    },
+                    onOpenNotifications = {
+                        navController.navigate(Routes.NotificationsRoute) { launchSingleTop = true }
+                    }
+                )
+            }
             composable(Routes.WhoAmI.route) { WhoAmIScreen() }
+            composable(Routes.Motivation.route) { MotivationScreen() }
             composable(Routes.Tasks.route) { TasksScreen() }
+            composable(Routes.BirthdaysRoute) {
+                BirthdaysScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.NotificationsRoute) {
+                NotificationsScreen(onBack = { navController.popBackStack() })
+            }
             composable(Routes.Goals.route) { GoalsScreen() }
-            composable(Routes.Reminders.route) { RemindersScreen() }
         }
     }
 }

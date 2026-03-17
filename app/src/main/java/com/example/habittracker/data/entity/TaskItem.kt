@@ -7,6 +7,13 @@ import androidx.room.PrimaryKey
 data class TaskItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
+    val category: String = "General",
     val isDone: Boolean,
-    val createdAt: Long
+    val completedAt: Long? = null,
+    val sortOrder: Int = 0,
+    val createdAt: Long,
+    val reminderEnabled: Boolean = false,
+    val reminderTime: String? = null,
+    val reminderDateTimesCsv: String? = null,
+    val reminderMessage: String? = null
 )

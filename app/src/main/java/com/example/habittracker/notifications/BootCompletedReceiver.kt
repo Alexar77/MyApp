@@ -23,12 +23,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
         CoroutineScope(Dispatchers.IO).launch {
-            val config = repository.getReminderConfig()
-            scheduler.rescheduleAll(
-                times = config.times.map { it.timeValue },
-                habitsEnabled = config.habitsEnabled,
-                tasksEnabled = config.tasksEnabled
-            )
+            val reminders = repository.getReminderScheduleItems()
+            scheduler.rescheduleAll(reminders)
         }
     }
 }

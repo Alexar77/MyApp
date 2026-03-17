@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -76,6 +77,7 @@ private data class MainScreenHeaderState(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    onOpenMenu: () -> Unit = {},
     onOpenBirthdays: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     viewModel: MainViewModel = hiltViewModel()
@@ -135,6 +137,11 @@ fun MainScreen(
         topBar = {
             TopAppBar(
                 title = { Text("MyApp") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = {

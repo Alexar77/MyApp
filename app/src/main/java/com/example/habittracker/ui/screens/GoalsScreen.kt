@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import com.example.habittracker.ui.icons.AppIcons
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -69,7 +71,10 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: GoalsViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val goalsToAchieve by remember(state.goals) {
         derivedStateOf { state.goals.filter { !it.isDone } }
@@ -108,7 +113,16 @@ fun GoalsScreen(viewModel: GoalsViewModel = hiltViewModel()) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Goals") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Goals") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(onClick = { isGoalDialogVisible = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Add goal")
@@ -483,7 +497,7 @@ private fun GoalCard(
     onRenameSubGoal: (SubGoalUiItem) -> Unit
 ) {
     var dragOffsetY by remember(goal.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = 72f
+    var cardHeightPx by remember(goal.id) { mutableFloatStateOf(0f) }
     val dragContainerColor = if (isDragging) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
     } else {
@@ -495,6 +509,9 @@ private fun GoalCard(
             .fillMaxWidth()
             .graphicsLayer { translationY = dragOffsetY }
             .zIndex(if (isDragging) 1f else 0f)
+            .onSizeChanged { size ->
+                cardHeightPx = size.height.toFloat().coerceAtLeast(1f)
+            }
             .pointerInput(goal.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -512,6 +529,7 @@ private fun GoalCard(
                     onDrag = { change, dragAmount ->
                         change.consume()
                         dragOffsetY += dragAmount.y
+                        val reorderStepPx = cardHeightPx
 
                         while (dragOffsetY > reorderStepPx) {
                             onMove(1)

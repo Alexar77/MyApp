@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -61,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -89,7 +91,10 @@ private val ReminderDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPatt
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
+fun TasksScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: TasksViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
     var taskInput by rememberSaveable { mutableStateOf("") }
@@ -160,6 +165,11 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Tasks") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = {
@@ -297,29 +307,31 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     )
                 } else {
                     state.pending.forEach { task ->
-                        TaskRow(
-                            modifier = Modifier,
-                            task = task,
-                            isDragging = draggingTaskId == task.id,
-                            onToggle = { viewModel.toggleTask(task) },
-                            onDelete = { taskPendingDelete = task },
-                            onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
-                            onDragStart = { draggingTaskId = task.id },
-                            onDragEnd = { draggingTaskId = null },
-                            onTransfer = {
-                                taskToTransfer = task
-                                transferCategoryInput = task.category
-                            },
-                            onEdit = {
-                                taskEditing = task
-                                editTaskInput = task.title
-                                editTaskCategoryInput = task.category
-                                editReminderEnabledInput = task.reminderEnabled
-                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
-                                editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderSelectionError = false
-                            }
-                        )
+                        key(task.id) {
+                            TaskRow(
+                                modifier = Modifier,
+                                task = task,
+                                isDragging = draggingTaskId == task.id,
+                                onToggle = { viewModel.toggleTask(task) },
+                                onDelete = { taskPendingDelete = task },
+                                onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
+                                onDragStart = { draggingTaskId = task.id },
+                                onDragEnd = { draggingTaskId = null },
+                                onTransfer = {
+                                    taskToTransfer = task
+                                    transferCategoryInput = task.category
+                                },
+                                onEdit = {
+                                    taskEditing = task
+                                    editTaskInput = task.title
+                                    editTaskCategoryInput = task.category
+                                    editReminderEnabledInput = task.reminderEnabled
+                                    editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
+                                    editReminderMessageInput = task.reminderMessage.orEmpty()
+                                    editReminderSelectionError = false
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -332,29 +344,31 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                     )
                 } else {
                     state.done.forEach { task ->
-                        TaskRow(
-                            modifier = Modifier,
-                            task = task,
-                            isDragging = draggingTaskId == task.id,
-                            onToggle = { viewModel.toggleTask(task) },
-                            onDelete = { taskPendingDelete = task },
-                            onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
-                            onDragStart = { draggingTaskId = task.id },
-                            onDragEnd = { draggingTaskId = null },
-                            onTransfer = {
-                                taskToTransfer = task
-                                transferCategoryInput = task.category
-                            },
-                            onEdit = {
-                                taskEditing = task
-                                editTaskInput = task.title
-                                editTaskCategoryInput = task.category
-                                editReminderEnabledInput = task.reminderEnabled
-                                editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
-                                editReminderMessageInput = task.reminderMessage.orEmpty()
-                                editReminderSelectionError = false
-                            }
-                        )
+                        key(task.id) {
+                            TaskRow(
+                                modifier = Modifier,
+                                task = task,
+                                isDragging = draggingTaskId == task.id,
+                                onToggle = { viewModel.toggleTask(task) },
+                                onDelete = { taskPendingDelete = task },
+                                onMove = { direction -> viewModel.moveTask(task.id, task.isDone, direction) },
+                                onDragStart = { draggingTaskId = task.id },
+                                onDragEnd = { draggingTaskId = null },
+                                onTransfer = {
+                                    taskToTransfer = task
+                                    transferCategoryInput = task.category
+                                },
+                                onEdit = {
+                                    taskEditing = task
+                                    editTaskInput = task.title
+                                    editTaskCategoryInput = task.category
+                                    editReminderEnabledInput = task.reminderEnabled
+                                    editReminderDateTimesInput = parseReminderDateTimesCsv(task.reminderDateTimesCsv)
+                                    editReminderMessageInput = task.reminderMessage.orEmpty()
+                                    editReminderSelectionError = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -763,7 +777,7 @@ private fun TaskRow(
     onEdit: () -> Unit
 ) {
     var dragOffsetY by remember(task.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = 72f
+    var rowHeightPx by remember(task.id) { mutableFloatStateOf(0f) }
     var menuExpanded by remember { mutableStateOf(false) }
 
     val dragModifier = if (isDragging) {
@@ -780,6 +794,9 @@ private fun TaskRow(
             .fillMaxWidth()
             .graphicsLayer { translationY = dragOffsetY }
             .then(dragModifier)
+            .onSizeChanged { size ->
+                rowHeightPx = size.height.toFloat().coerceAtLeast(1f)
+            }
             .pointerInput(task.id) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -797,6 +814,7 @@ private fun TaskRow(
                     onDrag = { change, dragAmount ->
                         change.consume()
                         dragOffsetY += dragAmount.y
+                        val reorderStepPx = rowHeightPx
 
                         while (dragOffsetY > reorderStepPx) {
                             onMove(1)

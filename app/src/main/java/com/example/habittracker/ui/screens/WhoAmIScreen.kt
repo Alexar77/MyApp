@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -67,7 +68,10 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
+fun WhoAmIScreen(
+    onOpenMenu: () -> Unit = {},
+    viewModel: WhoAmIViewModel = hiltViewModel()
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
 
@@ -94,6 +98,11 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Who am I?") },
+                navigationIcon = {
+                    IconButton(onClick = onOpenMenu) {
+                        Icon(Icons.Default.Menu, contentDescription = "Open navigation menu")
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = {

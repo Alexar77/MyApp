@@ -4,6 +4,7 @@ import com.example.habittracker.MainDispatcherRule
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.notifications.ReminderScheduler
 import com.example.habittracker.repository.HabitRepository
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -145,6 +146,7 @@ class MainViewModelTest {
                 )
             )
         }
+        every { repository.observePersistedHomeMonthSnapshot(any()) } returns MutableStateFlow(null)
         every { repository.observeGlobalMonth(any()) } answers {
             MutableStateFlow(
                 HabitRepository.GlobalMonthSnapshot(
@@ -159,6 +161,8 @@ class MainViewModelTest {
                 )
             )
         }
+        coEvery { repository.persistHomeMonthSnapshot(any()) } returns Unit
+        coEvery { repository.refreshHomeMonthSnapshot(any(), any()) } returns Unit
         every { repository.calculateScheduledDates(any(), any(), any(), any(), any()) } returns emptySet()
         every { repository.epochMillisToLocalDate(any()) } answers { LocalDate.of(2026, 3, 1) }
     }

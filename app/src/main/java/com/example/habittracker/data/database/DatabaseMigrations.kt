@@ -275,6 +275,30 @@ object DatabaseMigrations {
         }
     }
 
+    val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `home_month_snapshots` (
+                    `monthKey` TEXT NOT NULL,
+                    `selectedHabitId` INTEGER,
+                    `selectedCompletedDates` TEXT NOT NULL,
+                    `selectedScheduledDates` TEXT NOT NULL,
+                    `globalCompletedDates` TEXT NOT NULL,
+                    `globalScheduledDates` TEXT NOT NULL,
+                    `globalBirthdayDates` TEXT NOT NULL,
+                    `globalNoteDates` TEXT NOT NULL,
+                    `dayNotesByDate` TEXT NOT NULL,
+                    `selectedHabitCreatedDate` TEXT,
+                    `businessToday` TEXT NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`monthKey`)
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -290,6 +314,7 @@ object DatabaseMigrations {
         MIGRATION_12_13,
         MIGRATION_13_14,
         MIGRATION_14_15,
-        MIGRATION_15_16
+        MIGRATION_15_16,
+        MIGRATION_16_17
     )
 }

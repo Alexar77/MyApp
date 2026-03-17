@@ -1,9 +1,11 @@
 package com.example.habittracker.di
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.room.Room
 import com.example.habittracker.data.dao.GoalDao
 import com.example.habittracker.data.dao.BirthdayDao
+import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -26,6 +28,11 @@ import javax.inject.Singleton
 object AppModule {
     @Provides
     @Singleton
+    fun provideAppPreferences(@ApplicationContext context: Context): SharedPreferences =
+        context.getSharedPreferences("myapp_prefs", Context.MODE_PRIVATE)
+
+    @Provides
+    @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
             .addMigrations(*DatabaseMigrations.ALL)
@@ -41,6 +48,7 @@ object AppModule {
     @Provides fun provideGoalDao(database: AppDatabase): GoalDao = database.goalDao()
     @Provides fun provideSubGoalDao(database: AppDatabase): SubGoalDao = database.subGoalDao()
     @Provides fun provideBirthdayDao(database: AppDatabase): BirthdayDao = database.birthdayDao()
+    @Provides fun provideHomeMonthSnapshotDao(database: AppDatabase): HomeMonthSnapshotDao = database.homeMonthSnapshotDao()
 
     @Provides
     @Singleton
@@ -53,7 +61,9 @@ object AppModule {
         taskCategoryDao: TaskCategoryDao,
         goalDao: GoalDao,
         subGoalDao: SubGoalDao,
-        birthdayDao: BirthdayDao
+        birthdayDao: BirthdayDao,
+        homeMonthSnapshotDao: HomeMonthSnapshotDao,
+        appPreferences: SharedPreferences
     ): HabitRepository {
         return HabitRepository(
             habitDao = habitDao,
@@ -64,7 +74,9 @@ object AppModule {
             taskCategoryDao = taskCategoryDao,
             goalDao = goalDao,
             subGoalDao = subGoalDao,
-            birthdayDao = birthdayDao
+            birthdayDao = birthdayDao,
+            homeMonthSnapshotDao = homeMonthSnapshotDao,
+            appPreferences = appPreferences
         )
     }
 }

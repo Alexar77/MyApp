@@ -6,7 +6,6 @@ import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -29,6 +26,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -36,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,16 +44,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -85,6 +81,11 @@ fun MainScreen(
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    val hasSnapshotContent = screenState.selectedHabitId != null ||
+        screenState.scheduledDates.isNotEmpty() ||
+        screenState.globalScheduledDates.isNotEmpty() ||
+        screenState.globalBirthdayDates.isNotEmpty() ||
+        screenState.dayNotesByDate.isNotEmpty()
     val headerState = remember(screenState.selectedMonth) {
         MainScreenHeaderState(
             monthLabel = screenState.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
@@ -137,6 +138,7 @@ fun MainScreen(
     var isDeleteHabitConfirmVisible by rememberSaveable { mutableStateOf(false) }
     var isSeedDataConfirmVisible by rememberSaveable { mutableStateOf(false) }
     var isGlobalDayDetailsDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var isHabitDropdownExpanded by rememberSaveable { mutableStateOf(false) }
     var globalDayDetails by remember { mutableStateOf<GlobalDayDetails?>(null) }
     val context = LocalContext.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -162,7 +164,7 @@ fun MainScreen(
                         Text("Seed")
                     }
                     IconButton(
-                        enabled = screenState.selectedHabitId != null,
+                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
                         onClick = {
                             val selectedHabit = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }
                             if (selectedHabit != null) {
@@ -185,7 +187,7 @@ fun MainScreen(
                         Icon(Icons.Default.Edit, contentDescription = "Edit selected habit")
                     }
                     IconButton(
-                        enabled = screenState.selectedHabitId != null,
+                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
                         onClick = { isDeleteHabitConfirmVisible = true }
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete selected habit")
@@ -208,9 +210,9 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (!screenState.isDataLoaded) {
+            if (!screenState.isDataLoaded && !hasSnapshotContent) {
                 HomeLoadingState()
-            } else if (screenState.habits.isEmpty()) {
+            } else if (screenState.habits.isEmpty() && !hasSnapshotContent) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -237,135 +239,6 @@ fun MainScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    item {
-                        Text(
-                            text = "Select habit",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    item {
-                        var draggingHabitId by remember { mutableStateOf<Long?>(null) }
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(screenState.habits, key = { it.id }) { habitOption ->
-                                val isSelectedHabit = screenState.selectedHabitId == habitOption.id
-                                val isDragging = draggingHabitId == habitOption.id
-                                var dragOffsetX by remember(habitOption.id) { mutableFloatStateOf(0f) }
-                                val reorderStepPx = 80f
-                                AssistChip(
-                                    onClick = { viewModel.selectHabit(habitOption.id) },
-                                    label = { Text("${habitOption.name} \uD83D\uDD25 ${habitOption.currentStreak}") },
-                                    colors = if (isSelectedHabit) {
-                                        AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                                        )
-                                    } else {
-                                        AssistChipDefaults.assistChipColors()
-                                    },
-                                    modifier = Modifier
-                                        .graphicsLayer {
-                                            translationX = dragOffsetX
-                                            alpha = if (isDragging) 0.8f else 1f
-                                        }
-                                        .pointerInput(habitOption.id) {
-                                            detectDragGesturesAfterLongPress(
-                                                onDragStart = {
-                                                    dragOffsetX = 0f
-                                                    draggingHabitId = habitOption.id
-                                                },
-                                                onDragEnd = {
-                                                    dragOffsetX = 0f
-                                                    draggingHabitId = null
-                                                },
-                                                onDragCancel = {
-                                                    dragOffsetX = 0f
-                                                    draggingHabitId = null
-                                                },
-                                                onDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    dragOffsetX += dragAmount.x
-                                                    while (dragOffsetX > reorderStepPx) {
-                                                        viewModel.moveHabit(habitOption.id, 1)
-                                                        dragOffsetX -= reorderStepPx
-                                                    }
-                                                    while (dragOffsetX < -reorderStepPx) {
-                                                        viewModel.moveHabit(habitOption.id, -1)
-                                                        dragOffsetX += reorderStepPx
-                                                    }
-                                                }
-                                            )
-                                        }
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        Text(
-                            text = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }?.let { habit ->
-                                "${habit.name} \uD83D\uDD25 ${habit.currentStreak}"
-                            } ?: "Selected habit",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    item {
-                        Surface(
-                            tonalElevation = 2.dp,
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    IconButton(onClick = { viewModel.showPreviousMonth() }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Previous month"
-                                        )
-                                    }
-                                    Text(
-                                        text = headerState.monthLabel,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    IconButton(onClick = { viewModel.showNextMonth() }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowForward,
-                                            contentDescription = "Next month"
-                                        )
-                                    }
-                                }
-
-                                MonthCalendar(
-                                    month = screenState.selectedMonth,
-                                    completedDates = screenState.completedDates,
-                                    scheduledDates = screenState.scheduledDates,
-                                    birthdayDates = emptySet(),
-                                    noteDates = screenState.dayNotesByDate.keys,
-                                    todayDate = screenState.businessToday,
-                                    onToggleDate = viewModel::toggleDay,
-                                    onOpenDayNote = { date ->
-                                        selectedNoteDate = date
-                                        dayNoteInput = screenState.dayNotesByDate[date].orEmpty()
-                                        isDayNoteDialogVisible = true
-                                    }
-                                )
-                            }
-                        }
-                    }
-
                     item {
                         Surface(
                             tonalElevation = 1.dp,
@@ -403,7 +276,88 @@ fun MainScreen(
                                         isGlobalDayDetailsDialogVisible = true
                                     },
                                     onOpenDayNote = { },
-                                    interactive = true
+                                    interactive = screenState.isDataLoaded
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Surface(
+                            tonalElevation = 2.dp,
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                val selectedHabitLabel = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }?.let { habit ->
+                                    "${habit.name} \uD83D\uDD25 ${habit.currentStreak}"
+                                } ?: if (hasSnapshotContent) "Saved snapshot" else "Select habit"
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    IconButton(onClick = { viewModel.showPreviousMonth() }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Previous month"
+                                        )
+                                    }
+                                    Text(
+                                        text = headerState.monthLabel,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    IconButton(onClick = { viewModel.showNextMonth() }) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = "Next month"
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedButton(
+                                        onClick = { isHabitDropdownExpanded = true },
+                                        enabled = screenState.habits.isNotEmpty(),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(selectedHabitLabel)
+                                    }
+                                    DropdownMenu(
+                                        expanded = isHabitDropdownExpanded,
+                                        onDismissRequest = { isHabitDropdownExpanded = false },
+                                        modifier = Modifier.fillMaxWidth(0.94f)
+                                    ) {
+                                        screenState.habits.forEach { habitOption ->
+                                            DropdownMenuItem(
+                                                text = { Text("${habitOption.name} \uD83D\uDD25 ${habitOption.currentStreak}") },
+                                                onClick = {
+                                                    isHabitDropdownExpanded = false
+                                                    viewModel.selectHabit(habitOption.id)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                MonthCalendar(
+                                    month = screenState.selectedMonth,
+                                    completedDates = screenState.completedDates,
+                                    scheduledDates = screenState.scheduledDates,
+                                    birthdayDates = emptySet(),
+                                    noteDates = screenState.dayNotesByDate.keys,
+                                    todayDate = screenState.businessToday,
+                                    onToggleDate = viewModel::toggleDay,
+                                    onOpenDayNote = { date ->
+                                        selectedNoteDate = date
+                                        dayNoteInput = screenState.dayNotesByDate[date].orEmpty()
+                                        isDayNoteDialogVisible = true
+                                    },
+                                    interactive = screenState.isDataLoaded
                                 )
                             }
                         }

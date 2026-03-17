@@ -73,14 +73,31 @@ class MainViewModel @Inject constructor(
     private val reminderScheduler: ReminderScheduler
 ) : ViewModel() {
     private val logTag = "MainVM"
+    private val initialMonth = YearMonth.from(habitRepository.currentBusinessDate())
+    private val initialPersistedSnapshot = habitRepository.peekPersistedHomeMonthSnapshot(initialMonth)
+    private val initialHabitOptions = habitRepository.peekCachedHabitOptions().map { option ->
+        HabitOptionUiState(
+            id = option.id,
+            name = option.name,
+            createdAt = option.createdAt,
+            frequencyType = option.frequencyType,
+            frequencyIntervalDays = option.frequencyIntervalDays,
+            frequencyWeekdays = option.frequencyWeekdays,
+            reminderEnabled = option.reminderEnabled,
+            reminderTime = option.reminderTime,
+            reminderMessage = option.reminderMessage,
+            currentStreak = 0
+        )
+    }
 
-    private val selectedHabitIdFlow = MutableStateFlow<Long?>(null)
-    private val selectedMonthFlow = MutableStateFlow(YearMonth.from(habitRepository.currentBusinessDate()))
-    private val habitsStateFlow = MutableStateFlow<List<HabitOptionUiState>>(emptyList())
+    private val selectedHabitIdFlow = MutableStateFlow<Long?>(initialPersistedSnapshot?.selectedHabitId)
+    private val selectedMonthFlow = MutableStateFlow(initialMonth)
+    private val habitsStateFlow = MutableStateFlow<List<HabitOptionUiState>>(initialHabitOptions)
 
     private val mutableUiState = MutableStateFlow(
-        MainUiState(
-            selectedMonth = YearMonth.from(habitRepository.currentBusinessDate()),
+        initialPersistedSnapshot?.toMainUiState(initialHabitOptions) ?: MainUiState(
+            habits = initialHabitOptions,
+            selectedMonth = initialMonth,
             businessToday = habitRepository.currentBusinessDate()
         )
     )
@@ -141,6 +158,13 @@ class MainViewModel @Inject constructor(
                     logTag,
                     "habit options update count=${orderedHabitUiOptions.size} selected=$currentlySelectedHabitId resolved=$resolvedSelectedHabitId pendingOrder=${pendingHabitOrderIds?.size ?: 0}"
                 )
+                mutableUiState.update { currentState ->
+                    currentState.copy(
+                        habits = orderedHabitUiOptions,
+                        selectedHabitId = currentState.selectedHabitId ?: resolvedSelectedHabitId,
+                        isDataLoaded = currentState.isDataLoaded || hasReceivedHabitSnapshot
+                    )
+                }
                 if (!selectionStillValid) {
                     DebugLog.d(
                         logTag,
@@ -148,6 +172,44 @@ class MainViewModel @Inject constructor(
                     )
                     selectedHabitIdFlow.value = resolvedSelectedHabitId
                 }
+            }
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            selectedMonthFlow.flatMapLatest { selectedMonth ->
+                habitRepository.observePersistedHomeMonthSnapshot(selectedMonth)
+            }.collect { persistedSnapshot ->
+                if (persistedSnapshot == null) return@collect
+
+                if (selectedHabitIdFlow.value == null && persistedSnapshot.selectedHabitId != null) {
+                    selectedHabitIdFlow.value = persistedSnapshot.selectedHabitId
+                }
+
+                if (hasReceivedHabitSnapshot && mutableUiState.value.habits.isNotEmpty()) {
+                    return@collect
+                }
+
+                val snapshotUiState = MainUiState(
+                    habits = mutableUiState.value.habits,
+                    selectedHabitId = persistedSnapshot.selectedHabitId,
+                    selectedMonth = persistedSnapshot.month,
+                    completedDates = persistedSnapshot.selectedCompletedDates,
+                    scheduledDates = persistedSnapshot.selectedScheduledDates,
+                    globalCompletedDates = persistedSnapshot.globalCompletedDates,
+                    globalScheduledDates = persistedSnapshot.globalScheduledDates,
+                    globalBirthdayDates = persistedSnapshot.globalBirthdayDates,
+                    globalNoteDates = persistedSnapshot.globalNoteDates,
+                    globalCurrentStreak = 0,
+                    dayNotesByDate = persistedSnapshot.dayNotesByDate,
+                    selectedHabitCreatedDate = persistedSnapshot.selectedHabitCreatedDate,
+                    businessToday = persistedSnapshot.businessToday,
+                    isDataLoaded = false
+                )
+                DebugLog.d(
+                    logTag,
+                    "applied persisted snapshot month=${persistedSnapshot.month} selected=${persistedSnapshot.selectedHabitId} globalScheduled=${persistedSnapshot.globalScheduledDates.size}"
+                )
+                mutableUiState.value = snapshotUiState
             }
         }
 
@@ -183,6 +245,16 @@ class MainViewModel @Inject constructor(
                 globalMonthSnapshotFlow
             ) { habits, selectedHabitId, selectedMonth, selectedSnapshot, globalSnapshot ->
                 val businessToday = globalSnapshot.businessToday
+                if (!hasReceivedHabitSnapshot && habits.isEmpty() && selectedHabitId == null) {
+                    return@combine null
+                }
+                if (selectedHabitId != null && habits.isEmpty()) {
+                    DebugLog.d(
+                        logTag,
+                        "uiState publish skipped awaitingHabits month=$selectedMonth selected=$selectedHabitId"
+                    )
+                    return@combine null
+                }
                 val selectedStateIsReady = selectedHabitId == null || selectedSnapshot.habitId == selectedHabitId
                 if (!selectedStateIsReady) {
                     DebugLog.d(
@@ -230,10 +302,50 @@ class MainViewModel @Inject constructor(
                     "uiState publish month=${combinedState.selectedMonth} selected=${combinedState.selectedHabitId} habits=${combinedState.habits.size} loaded=${combinedState.isDataLoaded}"
                 )
                 mutableUiState.value = combinedState
+                if (combinedState.isDataLoaded) {
+                    launch {
+                        habitRepository.persistHomeMonthSnapshot(
+                            HabitRepository.HomeMonthSnapshotState(
+                                month = combinedState.selectedMonth,
+                                selectedHabitId = combinedState.selectedHabitId,
+                                selectedCompletedDates = combinedState.completedDates,
+                                selectedScheduledDates = combinedState.scheduledDates,
+                                globalCompletedDates = combinedState.globalCompletedDates,
+                                globalScheduledDates = combinedState.globalScheduledDates,
+                                globalBirthdayDates = combinedState.globalBirthdayDates,
+                                globalNoteDates = combinedState.globalNoteDates,
+                                dayNotesByDate = combinedState.dayNotesByDate,
+                                selectedHabitCreatedDate = combinedState.selectedHabitCreatedDate,
+                                businessToday = combinedState.businessToday,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
             }
         }
 
     }
+
+    private fun HabitRepository.HomeMonthSnapshotState.toMainUiState(
+        habits: List<HabitOptionUiState>
+    ): MainUiState =
+        MainUiState(
+            habits = habits,
+            selectedHabitId = selectedHabitId,
+            selectedMonth = month,
+            completedDates = selectedCompletedDates,
+            scheduledDates = selectedScheduledDates,
+            globalCompletedDates = globalCompletedDates,
+            globalScheduledDates = globalScheduledDates,
+            globalBirthdayDates = globalBirthdayDates,
+            globalNoteDates = globalNoteDates,
+            globalCurrentStreak = 0,
+            dayNotesByDate = dayNotesByDate,
+            selectedHabitCreatedDate = selectedHabitCreatedDate,
+            businessToday = businessToday,
+            isDataLoaded = false
+        )
 
     fun addHabit(
         habitName: String,
@@ -276,6 +388,10 @@ class MainViewModel @Inject constructor(
                 reminderTime = reminderTime,
                 reminderMessage = reminderMessage
             )
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedHabitIdFlow.value
+            )
             rescheduleReminders("addHabit")
             DebugLog.d(logTag, "addHabit completed name=$habitName")
         }
@@ -308,6 +424,10 @@ class MainViewModel @Inject constructor(
                 reminderTime = reminderTime,
                 reminderMessage = reminderMessage
             )
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedId
+            )
             rescheduleReminders("updateSelectedHabit")
             DebugLog.d(logTag, "updateSelectedHabit completed selectedId=$selectedId")
         }
@@ -317,11 +437,17 @@ class MainViewModel @Inject constructor(
     fun selectHabit(habitId: Long) {
         DebugLog.d(logTag, "selectHabit habitId=$habitId")
         selectedHabitIdFlow.value = habitId
+        viewModelScope.launch {
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = habitId
+            )
+        }
     }
 
     fun moveHabit(habitId: Long, direction: Int) {
         DebugLog.d(logTag, "moveHabit habitId=$habitId direction=$direction")
-        val habits = habitsStateFlow.value
+        val habits = habitsStateFlow.value.ifEmpty { mutableUiState.value.habits }
         val fromIndex = habits.indexOfFirst { it.id == habitId }
         if (fromIndex == -1) return
 
@@ -343,6 +469,10 @@ class MainViewModel @Inject constructor(
             delay(300)
             DebugLog.d(logTag, "persist habit reorder count=${reordered.size}")
             habitRepository.reorderHabits(reordered.map { it.id })
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedHabitIdFlow.value
+            )
             pendingHabitOrderIds = null
         }
     }
@@ -352,6 +482,10 @@ class MainViewModel @Inject constructor(
         DebugLog.d(logTag, "deleteSelectedHabit selectedId=$selectedId")
         viewModelScope.launch {
             habitRepository.deleteHabit(selectedId)
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedHabitIdFlow.value
+            )
             rescheduleReminders("deleteSelectedHabit")
         }
     }
@@ -360,6 +494,10 @@ class MainViewModel @Inject constructor(
         DebugLog.d(logTag, "seedTestData requested")
         viewModelScope.launch {
             habitRepository.seedTestData()
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedHabitIdFlow.value
+            )
             rescheduleReminders("seedTestData")
             DebugLog.d(logTag, "seedTestData completed")
         }
@@ -379,7 +517,9 @@ class MainViewModel @Inject constructor(
         val selectedId = selectedHabitIdFlow.value ?: return
         DebugLog.d(logTag, "toggleDay date=$date selectedId=$selectedId")
         val uiStateSnapshot = mutableUiState.value
-        val selectedHabit = uiStateSnapshot.habits.firstOrNull { it.id == selectedId } ?: return
+        val selectedHabit = uiStateSnapshot.habits.firstOrNull { it.id == selectedId }
+            ?: habitsStateFlow.value.firstOrNull { it.id == selectedId }
+            ?: return
         val createdDate = habitRepository.epochMillisToLocalDate(selectedHabit.createdAt)
         val targetDate = runCatching { LocalDate.parse(date) }.getOrNull() ?: return
         val today = habitRepository.currentBusinessDate()
@@ -400,6 +540,10 @@ class MainViewModel @Inject constructor(
         }
         viewModelScope.launch {
             habitRepository.toggleCompletion(selectedId, date)
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedId
+            )
             DebugLog.d(logTag, "toggleDay completed date=$date selectedId=$selectedId")
         }
     }
@@ -407,7 +551,13 @@ class MainViewModel @Inject constructor(
     fun saveDayNote(date: String, note: String) {
         val selectedId = selectedHabitIdFlow.value ?: return
         DebugLog.d(logTag, "saveDayNote selectedId=$selectedId date=$date noteLength=${note.length}")
-        viewModelScope.launch { habitRepository.saveHabitDayNote(selectedId, date, note) }
+        viewModelScope.launch {
+            habitRepository.saveHabitDayNote(selectedId, date, note)
+            habitRepository.refreshHomeMonthSnapshot(
+                month = selectedMonthFlow.value,
+                selectedHabitId = selectedId
+            )
+        }
     }
 
     fun parseFrequencyWeekdays(value: String?): Set<Int> {

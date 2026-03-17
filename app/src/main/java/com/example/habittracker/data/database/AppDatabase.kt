@@ -4,6 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.example.habittracker.data.dao.GoalDao
 import com.example.habittracker.data.dao.BirthdayDao
+import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -15,6 +16,7 @@ import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
 import com.example.habittracker.data.entity.Birthday
+import com.example.habittracker.data.entity.HomeMonthSnapshot
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
@@ -38,8 +40,10 @@ import com.example.habittracker.data.entity.WhoAmINote
         ReminderSettings::class,
         ReminderTime::class,
         Birthday::class
+        ,
+        HomeMonthSnapshot::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -54,6 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun reminderSettingsDao(): ReminderSettingsDao
     abstract fun reminderTimeDao(): ReminderTimeDao
     abstract fun birthdayDao(): BirthdayDao
+    abstract fun homeMonthSnapshotDao(): HomeMonthSnapshotDao
 
     companion object {
         const val NAME = "habit_tracker.db"

@@ -1,7 +1,9 @@
 package com.example.habittracker.repository
 
+import android.content.SharedPreferences
 import com.example.habittracker.data.dao.GoalDao
 import com.example.habittracker.data.dao.BirthdayDao
+import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -11,6 +13,7 @@ import com.example.habittracker.data.dao.TaskDao
 import com.example.habittracker.data.dao.WhoAmINoteDao
 import com.example.habittracker.data.entity.Goal
 import com.example.habittracker.data.entity.Birthday
+import com.example.habittracker.data.entity.HomeMonthSnapshot
 import com.example.habittracker.data.entity.Habit
 import com.example.habittracker.data.entity.HabitCompletion
 import com.example.habittracker.data.entity.HabitDayNote
@@ -25,6 +28,9 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
+import java.nio.charset.StandardCharsets
+import java.net.URLDecoder
+import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -45,12 +51,16 @@ class HabitRepository @Inject constructor(
     private val taskCategoryDao: TaskCategoryDao,
     private val goalDao: GoalDao,
     private val subGoalDao: SubGoalDao,
-    private val birthdayDao: BirthdayDao
+    private val birthdayDao: BirthdayDao,
+    private val homeMonthSnapshotDao: HomeMonthSnapshotDao,
+    private val appPreferences: SharedPreferences
 ) {
     private val logTag = "Repository"
 
     companion object {
         const val DEFAULT_TASK_CATEGORY = "General"
+        private const val HOME_SNAPSHOT_PREF_PREFIX = "home_snapshot_"
+        private const val HABIT_OPTIONS_PREF_KEY = "habit_options_cache"
     }
 
     enum class HabitFrequencyType { DAILY, WEEKLY, EVERY_N_DAYS }
@@ -120,6 +130,21 @@ class HabitRepository @Inject constructor(
         val businessToday: LocalDate
     )
 
+    data class HomeMonthSnapshotState(
+        val month: YearMonth,
+        val selectedHabitId: Long?,
+        val selectedCompletedDates: Set<String>,
+        val selectedScheduledDates: Set<String>,
+        val globalCompletedDates: Set<String>,
+        val globalScheduledDates: Set<String>,
+        val globalBirthdayDates: Set<String>,
+        val globalNoteDates: Set<String>,
+        val dayNotesByDate: Map<String, String>,
+        val selectedHabitCreatedDate: LocalDate?,
+        val businessToday: LocalDate,
+        val updatedAt: Long
+    )
+
     fun observeHabits(): Flow<List<HabitOption>> = habitDao.observeHabits().map { habits ->
         habits.map {
             HabitOption(
@@ -133,8 +158,14 @@ class HabitRepository @Inject constructor(
                 reminderTime = it.reminderTime,
                 reminderMessage = it.reminderMessage
             )
-        }
+        }.also(::cacheHabitOptions)
     }.distinctUntilChanged()
+
+    fun peekCachedHabitOptions(): List<HabitOption> =
+        appPreferences.getString(HABIT_OPTIONS_PREF_KEY, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::deserializeHabitOptions)
+            .orEmpty()
 
     fun observeCompletedDateStrings(habitId: Long): Flow<Set<String>> =
         completionDao.observeCompletionsForHabit(habitId).map { completions ->
@@ -389,6 +420,37 @@ class HabitRepository @Inject constructor(
             .flowOn(Dispatchers.Default)
     }
 
+    fun observePersistedHomeMonthSnapshot(month: YearMonth): Flow<HomeMonthSnapshotState?> =
+        homeMonthSnapshotDao.observeSnapshot(month.toString()).map { snapshot ->
+            snapshot?.toState()?.also { cacheHomeMonthSnapshot(it) }
+        }.distinctUntilChanged()
+
+    fun peekPersistedHomeMonthSnapshot(month: YearMonth): HomeMonthSnapshotState? =
+        appPreferences
+            .getString(homeSnapshotPrefKey(month), null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::deserializeCachedSnapshot)
+
+    suspend fun persistHomeMonthSnapshot(snapshot: HomeMonthSnapshotState) {
+        homeMonthSnapshotDao.upsert(snapshot.toEntity())
+        cacheHomeMonthSnapshot(snapshot)
+        DebugLog.d(
+            logTag,
+            "persisted home snapshot month=${snapshot.month} selected=${snapshot.selectedHabitId} selectedScheduled=${snapshot.selectedScheduledDates.size} globalScheduled=${snapshot.globalScheduledDates.size}"
+        )
+    }
+
+    suspend fun refreshHomeMonthSnapshot(
+        month: YearMonth = YearMonth.from(currentBusinessDate()),
+        selectedHabitId: Long? = null
+    ) {
+        val snapshot = buildHomeMonthSnapshot(
+            month = month,
+            selectedHabitId = selectedHabitId
+        )
+        persistHomeMonthSnapshot(snapshot)
+    }
+
     suspend fun getReminderScheduleItems(): List<ReminderScheduleItem> {
         val habits = habitDao.getAllHabits()
         val tasks = taskDao.getAll()
@@ -449,6 +511,7 @@ class HabitRepository @Inject constructor(
                 reminderMessage = normalizedReminderMessage
             )
         )
+        refreshHomeMonthSnapshot()
     }
 
     suspend fun seedTestData() {
@@ -685,12 +748,14 @@ class HabitRepository @Inject constructor(
                 }
             }
         }
+        refreshHomeMonthSnapshot(selectedHabitId = seededHabitIds.firstOrNull())
     }
 
     suspend fun reorderHabits(orderedHabitIds: List<Long>) {
         orderedHabitIds.forEachIndexed { index, habitId ->
             habitDao.updateSortOrder(habitId, index)
         }
+        refreshHomeMonthSnapshot(selectedHabitId = orderedHabitIds.firstOrNull())
     }
 
     suspend fun updateHabit(
@@ -725,9 +790,13 @@ class HabitRepository @Inject constructor(
             reminderTime = normalizedReminderTime,
             reminderMessage = normalizedReminderMessage
         )
+        refreshHomeMonthSnapshot(selectedHabitId = habitId)
     }
 
-    suspend fun deleteHabit(habitId: Long) = habitDao.deleteHabitById(habitId)
+    suspend fun deleteHabit(habitId: Long) {
+        habitDao.deleteHabitById(habitId)
+        refreshHomeMonthSnapshot()
+    }
 
     suspend fun toggleCompletion(habitId: Long, date: String) {
         val existing = completionDao.getCompletion(habitId, date)
@@ -739,6 +808,7 @@ class HabitRepository @Inject constructor(
                 completed = !(existing?.completed ?: false)
             )
         )
+        refreshHomeMonthSnapshot(selectedHabitId = habitId)
     }
 
     suspend fun saveHabitDayNote(habitId: Long, date: String, note: String) {
@@ -746,9 +816,11 @@ class HabitRepository @Inject constructor(
         val existing = habitDayNoteDao.getNoteForDay(habitId, date)
         if (sanitized.isEmpty()) {
             if (existing != null) habitDayNoteDao.deleteById(existing.id)
+            refreshHomeMonthSnapshot(selectedHabitId = habitId)
             return
         }
         habitDayNoteDao.upsert(HabitDayNote(id = existing?.id ?: 0, habitId = habitId, date = date, note = note))
+        refreshHomeMonthSnapshot(selectedHabitId = habitId)
     }
 
     suspend fun createWhoAmINote(title: String): Long {
@@ -954,7 +1026,7 @@ class HabitRepository @Inject constructor(
         val sanitized = name.trim()
         if (sanitized.isEmpty()) return 0L
         if (!isValidDate(year, month, day)) return 0L
-        return birthdayDao.insert(
+        val birthdayId = birthdayDao.insert(
             Birthday(
                 name = sanitized,
                 year = year,
@@ -964,6 +1036,8 @@ class HabitRepository @Inject constructor(
                 createdAt = System.currentTimeMillis()
             )
         )
+        refreshHomeMonthSnapshot()
+        return birthdayId
     }
 
     suspend fun updateBirthday(
@@ -985,9 +1059,13 @@ class HabitRepository @Inject constructor(
             day = day,
             reminderDateTimesCsv = normalizeReminderDateTimesCsv(reminderDateTimesCsv)
         )
+        refreshHomeMonthSnapshot()
     }
 
-    suspend fun deleteBirthday(birthdayId: Long) = birthdayDao.deleteById(birthdayId)
+    suspend fun deleteBirthday(birthdayId: Long) {
+        birthdayDao.deleteById(birthdayId)
+        refreshHomeMonthSnapshot()
+    }
 
     fun birthdayOccurrenceInYear(month: Int, day: Int, year: Int): LocalDate {
         val safeMonth = month.coerceIn(1, 12)
@@ -1003,6 +1081,88 @@ class HabitRepository @Inject constructor(
         } else {
             birthdayOccurrenceInYear(month = month, day = day, year = fromDate.year + 1)
         }
+    }
+
+    suspend fun buildHomeMonthSnapshot(
+        month: YearMonth,
+        selectedHabitId: Long? = null
+    ): HomeMonthSnapshotState {
+        val today = currentBusinessDate()
+        val habits = habitDao.getAllHabits()
+        val effectiveSelectedHabitId = selectedHabitId?.takeIf { candidateId ->
+            habits.any { it.id == candidateId }
+        } ?: habits.firstOrNull()?.id
+        val (startDate, endDate) = monthRange(month)
+        val completions = completionDao.getCompletionsInRange(startDate, endDate)
+        val notes = habitDayNoteDao.getNotesInRange(startDate, endDate)
+        val birthdays = birthdayDao.getAll()
+
+        val completedByHabit = completions.asSequence()
+            .filter { it.completed }
+            .groupBy(keySelector = { it.habitId }, valueTransform = { it.date })
+            .mapValues { (_, dates) -> dates.toSet() }
+        val dayNotesByHabitAndDate = notes.associate { (it.habitId to it.date) to it.note }
+        val selectedHabit = habits.firstOrNull { it.id == effectiveSelectedHabitId }
+        val selectedCreatedDate = selectedHabit?.let { epochMillisToLocalDate(it.createdAt) }
+        val selectedScheduledDates = if (selectedHabit == null || selectedCreatedDate == null) {
+            emptySet()
+        } else {
+            calculateScheduledDatesInMonth(
+                createdDate = selectedCreatedDate,
+                month = month,
+                today = today,
+                frequencyTypeValue = selectedHabit.frequencyType,
+                frequencyIntervalDays = selectedHabit.frequencyIntervalDays,
+                frequencyWeekdays = selectedHabit.frequencyWeekdays
+            )
+        }
+        val selectedCompletedDates = completedByHabit[effectiveSelectedHabitId].orEmpty()
+        val selectedDayNotes = notes.asSequence()
+            .filter { it.habitId == effectiveSelectedHabitId }
+            .associate { it.date to it.note }
+
+        val dayScheduledCount = linkedMapOf<String, Int>()
+        val dayCompletionCount = linkedMapOf<String, Int>()
+        habits.forEach { habit ->
+            val createdDate = epochMillisToLocalDate(habit.createdAt)
+            val scheduledDates = calculateScheduledDatesInMonth(
+                createdDate = createdDate,
+                month = month,
+                today = today,
+                frequencyTypeValue = habit.frequencyType,
+                frequencyIntervalDays = habit.frequencyIntervalDays,
+                frequencyWeekdays = habit.frequencyWeekdays
+            )
+            val completedDates = completedByHabit[habit.id].orEmpty()
+            scheduledDates.forEach { date ->
+                dayScheduledCount[date] = (dayScheduledCount[date] ?: 0) + 1
+                if (completedDates.contains(date)) {
+                    dayCompletionCount[date] = (dayCompletionCount[date] ?: 0) + 1
+                }
+            }
+        }
+
+        val birthdayDates = birthdays.map {
+            birthdayOccurrenceInYear(it.month, it.day, month.year).toString()
+        }.toSet()
+
+        return HomeMonthSnapshotState(
+            month = month,
+            selectedHabitId = effectiveSelectedHabitId,
+            selectedCompletedDates = selectedCompletedDates,
+            selectedScheduledDates = selectedScheduledDates,
+            globalCompletedDates = dayScheduledCount.keys.filter { date ->
+                val scheduledCount = dayScheduledCount[date] ?: 0
+                scheduledCount > 0 && (dayCompletionCount[date] ?: 0) == scheduledCount
+            }.toSet(),
+            globalScheduledDates = dayScheduledCount.keys.toSet(),
+            globalBirthdayDates = birthdayDates,
+            globalNoteDates = notes.asSequence().map { it.date }.toSet(),
+            dayNotesByDate = selectedDayNotes,
+            selectedHabitCreatedDate = selectedCreatedDate,
+            businessToday = today,
+            updatedAt = System.currentTimeMillis()
+        )
     }
 
     fun currentBusinessDate(now: LocalDateTime = LocalDateTime.now()): LocalDate = now.minusHours(5).toLocalDate()
@@ -1308,5 +1468,160 @@ class HabitRepository @Inject constructor(
             .mapNotNull { token -> token.trim().toIntOrNull() }
             .filter { it in 1..7 }
             .toSet()
+    }
+
+    private fun HomeMonthSnapshotState.toEntity(): HomeMonthSnapshot =
+        HomeMonthSnapshot(
+            monthKey = month.toString(),
+            selectedHabitId = selectedHabitId,
+            selectedCompletedDates = serializeStringSet(selectedCompletedDates),
+            selectedScheduledDates = serializeStringSet(selectedScheduledDates),
+            globalCompletedDates = serializeStringSet(globalCompletedDates),
+            globalScheduledDates = serializeStringSet(globalScheduledDates),
+            globalBirthdayDates = serializeStringSet(globalBirthdayDates),
+            globalNoteDates = serializeStringSet(globalNoteDates),
+            dayNotesByDate = serializeStringMap(dayNotesByDate),
+            selectedHabitCreatedDate = selectedHabitCreatedDate?.toString(),
+            businessToday = businessToday.toString(),
+            updatedAt = updatedAt
+        )
+
+    private fun HomeMonthSnapshot.toState(): HomeMonthSnapshotState =
+        HomeMonthSnapshotState(
+            month = YearMonth.parse(monthKey),
+            selectedHabitId = selectedHabitId,
+            selectedCompletedDates = deserializeStringSet(selectedCompletedDates),
+            selectedScheduledDates = deserializeStringSet(selectedScheduledDates),
+            globalCompletedDates = deserializeStringSet(globalCompletedDates),
+            globalScheduledDates = deserializeStringSet(globalScheduledDates),
+            globalBirthdayDates = deserializeStringSet(globalBirthdayDates),
+            globalNoteDates = deserializeStringSet(globalNoteDates),
+            dayNotesByDate = deserializeStringMap(dayNotesByDate),
+            selectedHabitCreatedDate = selectedHabitCreatedDate?.let(LocalDate::parse),
+            businessToday = LocalDate.parse(businessToday),
+            updatedAt = updatedAt
+        )
+
+    private fun serializeStringSet(values: Set<String>): String =
+        values.sorted().joinToString("|") { encodeSnapshotToken(it) }
+
+    private fun deserializeStringSet(value: String): Set<String> =
+        if (value.isBlank()) {
+            emptySet()
+        } else {
+            value.split("|").asSequence()
+                .mapNotNull { token -> token.takeIf { it.isNotEmpty() }?.let(::decodeSnapshotToken) }
+                .toSet()
+        }
+
+    private fun serializeStringMap(values: Map<String, String>): String =
+        values.toSortedMap().entries.joinToString("|") { (key, content) ->
+            "${encodeSnapshotToken(key)}=${encodeSnapshotToken(content)}"
+        }
+
+    private fun deserializeStringMap(value: String): Map<String, String> =
+        if (value.isBlank()) {
+            emptyMap()
+        } else {
+            value.split("|").asSequence()
+                .mapNotNull { entry ->
+                    val separator = entry.indexOf('=')
+                    if (separator <= 0) return@mapNotNull null
+                    val key = decodeSnapshotToken(entry.substring(0, separator))
+                    val content = decodeSnapshotToken(entry.substring(separator + 1))
+                    key to content
+                }
+                .toMap()
+        }
+
+    private fun encodeSnapshotToken(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
+
+    private fun decodeSnapshotToken(value: String): String =
+        URLDecoder.decode(value, StandardCharsets.UTF_8.toString())
+
+    private fun cacheHabitOptions(options: List<HabitOption>) {
+        appPreferences.edit()
+            .putString(HABIT_OPTIONS_PREF_KEY, serializeHabitOptions(options))
+            .apply()
+    }
+
+    private fun serializeHabitOptions(options: List<HabitOption>): String =
+        options.joinToString("|") { option ->
+            listOf(
+                option.id.toString(),
+                encodeSnapshotToken(option.name),
+                option.createdAt.toString(),
+                encodeSnapshotToken(option.frequencyType),
+                option.frequencyIntervalDays?.toString().orEmpty(),
+                encodeSnapshotToken(option.frequencyWeekdays.orEmpty()),
+                option.reminderEnabled.toString(),
+                encodeSnapshotToken(option.reminderTime.orEmpty()),
+                encodeSnapshotToken(option.reminderMessage.orEmpty())
+            ).joinToString("~")
+        }
+
+    private fun deserializeHabitOptions(value: String): List<HabitOption> =
+        value.split("|").mapNotNull { entry ->
+            if (entry.isBlank()) return@mapNotNull null
+            val parts = entry.split("~")
+            if (parts.size != 9) return@mapNotNull null
+            HabitOption(
+                id = parts[0].toLongOrNull() ?: return@mapNotNull null,
+                name = decodeSnapshotToken(parts[1]),
+                createdAt = parts[2].toLongOrNull() ?: return@mapNotNull null,
+                frequencyType = decodeSnapshotToken(parts[3]),
+                frequencyIntervalDays = parts[4].toIntOrNull(),
+                frequencyWeekdays = decodeSnapshotToken(parts[5]).ifBlank { null },
+                reminderEnabled = parts[6].toBooleanStrictOrNull() ?: false,
+                reminderTime = decodeSnapshotToken(parts[7]).ifBlank { null },
+                reminderMessage = decodeSnapshotToken(parts[8]).ifBlank { null }
+            )
+        }
+
+    private fun cacheHomeMonthSnapshot(snapshot: HomeMonthSnapshotState) {
+        appPreferences.edit()
+            .putString(homeSnapshotPrefKey(snapshot.month), serializeCachedSnapshot(snapshot))
+            .apply()
+    }
+
+    private fun homeSnapshotPrefKey(month: YearMonth): String = "$HOME_SNAPSHOT_PREF_PREFIX$month"
+
+    private fun serializeCachedSnapshot(snapshot: HomeMonthSnapshotState): String =
+        snapshot.toEntity().let { entity ->
+            listOf(
+                entity.monthKey,
+                entity.selectedHabitId?.toString().orEmpty(),
+                entity.selectedCompletedDates,
+                entity.selectedScheduledDates,
+                entity.globalCompletedDates,
+                entity.globalScheduledDates,
+                entity.globalBirthdayDates,
+                entity.globalNoteDates,
+                entity.dayNotesByDate,
+                entity.selectedHabitCreatedDate.orEmpty(),
+                entity.businessToday,
+                entity.updatedAt.toString()
+            ).joinToString("\n")
+        }
+
+    private fun deserializeCachedSnapshot(value: String): HomeMonthSnapshotState? {
+        val parts = value.split('\n')
+        if (parts.size != 12) return null
+        val entity = HomeMonthSnapshot(
+            monthKey = parts[0],
+            selectedHabitId = parts[1].toLongOrNull(),
+            selectedCompletedDates = parts[2],
+            selectedScheduledDates = parts[3],
+            globalCompletedDates = parts[4],
+            globalScheduledDates = parts[5],
+            globalBirthdayDates = parts[6],
+            globalNoteDates = parts[7],
+            dayNotesByDate = parts[8],
+            selectedHabitCreatedDate = parts[9].ifBlank { null },
+            businessToday = parts[10],
+            updatedAt = parts[11].toLongOrNull() ?: return null
+        )
+        return runCatching { entity.toState() }.getOrNull()
     }
 }

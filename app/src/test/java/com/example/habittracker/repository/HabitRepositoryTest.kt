@@ -1,7 +1,9 @@
 package com.example.habittracker.repository
 
+import android.content.SharedPreferences
 import com.example.habittracker.data.dao.BirthdayDao
 import com.example.habittracker.data.dao.GoalDao
+import com.example.habittracker.data.dao.HomeMonthSnapshotDao
 import com.example.habittracker.data.dao.HabitCompletionDao
 import com.example.habittracker.data.dao.HabitDao
 import com.example.habittracker.data.dao.HabitDayNoteDao
@@ -40,6 +42,9 @@ class HabitRepositoryTest {
     private val goalDao = mockk<GoalDao>(relaxed = true)
     private val subGoalDao = mockk<SubGoalDao>(relaxed = true)
     private val birthdayDao = mockk<BirthdayDao>(relaxed = true)
+    private val homeMonthSnapshotDao = mockk<HomeMonthSnapshotDao>(relaxed = true)
+    private val appPreferences = mockk<SharedPreferences>(relaxed = true)
+    private val appPreferencesEditor = mockk<SharedPreferences.Editor>(relaxed = true)
 
     private lateinit var repository: HabitRepository
 
@@ -56,6 +61,8 @@ class HabitRepositoryTest {
         every { goalDao.observeAll() } returns emptyFlow()
         every { subGoalDao.observeAll() } returns emptyFlow()
         every { birthdayDao.observeAll() } returns emptyFlow()
+        every { appPreferences.edit() } returns appPreferencesEditor
+        every { appPreferencesEditor.putString(any(), any()) } returns appPreferencesEditor
 
         repository = HabitRepository(
             habitDao = habitDao,
@@ -66,7 +73,9 @@ class HabitRepositoryTest {
             taskCategoryDao = taskCategoryDao,
             goalDao = goalDao,
             subGoalDao = subGoalDao,
-            birthdayDao = birthdayDao
+            birthdayDao = birthdayDao,
+            homeMonthSnapshotDao = homeMonthSnapshotDao,
+            appPreferences = appPreferences
         )
     }
 

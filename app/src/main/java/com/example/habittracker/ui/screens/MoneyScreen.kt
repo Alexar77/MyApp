@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -64,6 +65,8 @@ private enum class MoneyEntryType(val label: String, val isIncome: Boolean) {
     EXPENSE("Expense", false),
     INCOME("Income", true)
 }
+
+private val MoneyIncomeGreen = Color(0xFF2E7D32)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,7 +202,7 @@ fun MoneyScreen(
                         )
                         Text(
                             text = "Income: ${displayAmount(state.totalIncome)}",
-                            color = MaterialTheme.colorScheme.tertiary
+                            color = MoneyIncomeGreen
                         )
                     }
                 }
@@ -241,10 +244,11 @@ fun MoneyScreen(
                         } else {
                             TrendChart(
                                 points = chartPoints,
-                                secondaryPoints = budgetLinePoints
+                                secondaryPoints = budgetLinePoints,
+                                secondaryColor = MoneyIncomeGreen
                             )
                             Text(
-                                text = "Primary line: net cash flow  •  Secondary line: budget",
+                                text = "Primary line: net cash flow  •  Green line: budget",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -283,7 +287,7 @@ fun MoneyScreen(
                                 Text(
                                     text = if (expense.isIncome) "Time value: ${viewModel.formatHours(expense.hoursCost)}"
                                     else "Time cost: ${viewModel.formatHours(expense.hoursCost)}",
-                                    color = if (expense.isIncome) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                                    color = if (expense.isIncome) MoneyIncomeGreen else MaterialTheme.colorScheme.primary,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -291,7 +295,7 @@ fun MoneyScreen(
                                 Text(
                                     text = if (expense.isIncome) "+${displayAmount(expense.amount)}" else "-${displayAmount(expense.amount)}",
                                     fontWeight = FontWeight.Bold,
-                                    color = if (expense.isIncome) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface
+                                    color = if (expense.isIncome) MoneyIncomeGreen else MaterialTheme.colorScheme.onSurface
                                 )
                                 IconButton(onClick = { expensePendingDelete = expense }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete payment")

@@ -38,6 +38,7 @@ data class TrendSeries(
 fun TrendChart(
     points: List<TrendPoint>,
     secondaryPoints: List<TrendPoint> = emptyList(),
+    secondaryColor: Color = MaterialTheme.colorScheme.tertiary,
     modifier: Modifier = Modifier
 ) {
     if (points.isEmpty() && secondaryPoints.isEmpty()) return
@@ -45,7 +46,7 @@ fun TrendChart(
     val colorScheme = MaterialTheme.colorScheme
     val primarySeries = TrendSeries(points = points, color = colorScheme.primary)
     val secondarySeries = secondaryPoints.takeIf { it.isNotEmpty() }?.let {
-        TrendSeries(points = it, color = colorScheme.tertiary)
+        TrendSeries(points = it, color = secondaryColor)
     }
     val allSeries = listOfNotNull(primarySeries.takeIf { it.points.isNotEmpty() }, secondarySeries)
     val chartHeight = 220.dp

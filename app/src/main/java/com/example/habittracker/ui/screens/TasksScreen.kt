@@ -751,16 +751,9 @@ private fun TaskRow(
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(TaskRowShape)
-            .background(itemContainerColor)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                shape = TaskRowShape
-            )
             .graphicsLayer { translationY = dragOffsetY }
             .zIndex(if (isDragging) 1f else 0f)
             .onSizeChanged { size ->
@@ -796,68 +789,80 @@ private fun TaskRow(
                     }
                 )
             }
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 2.dp)
     ) {
-        IconButton(onClick = onToggle) {
-            if (task.isDone) {
-                Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
-            } else {
-                Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = task.title,
-                textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
-                color = if (task.isDone) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(TaskRowShape)
+                .background(itemContainerColor)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                    shape = TaskRowShape
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onToggle) {
+                if (task.isDone) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = "Mark as not done")
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    Icon(AppIcons.RadioButtonUnchecked, contentDescription = "Mark as done")
                 }
-            )
-            Text(
-                text = task.category,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (task.isDone && task.completedAt != null) {
-                val completedDateText = remember(task.completedAt) {
-                    java.time.Instant.ofEpochMilli(task.completedAt)
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDate()
-                        .format(CompletedDateFormatter)
-                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Completed on $completedDateText",
+                    text = task.title,
+                    textDecoration = if (task.isDone) TextDecoration.LineThrough else TextDecoration.None,
+                    color = if (task.isDone) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+                Text(
+                    text = task.category,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (task.isDone && task.completedAt != null) {
+                    val completedDateText = remember(task.completedAt) {
+                        java.time.Instant.ofEpochMilli(task.completedAt)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate()
+                            .format(CompletedDateFormatter)
+                    }
+                    Text(
+                        text = "Completed on $completedDateText",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-        }
-        Box {
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "More actions")
-            }
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Edit") },
-                    onClick = { menuExpanded = false; onEdit() },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Transfer") },
-                    onClick = { menuExpanded = false; onTransfer() },
-                    leadingIcon = { Icon(AppIcons.SwapHoriz, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete") },
-                    onClick = { menuExpanded = false; onDelete() },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
-                )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = { menuExpanded = false; onEdit() },
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Transfer") },
+                        onClick = { menuExpanded = false; onTransfer() },
+                        leadingIcon = { Icon(AppIcons.SwapHoriz, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        onClick = { menuExpanded = false; onDelete() },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                    )
+                }
             }
         }
     }

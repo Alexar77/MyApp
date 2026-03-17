@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -28,6 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -195,65 +197,71 @@ private fun AppDrawerContent(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)
         )
         items.forEach { item ->
-            var dragOffsetY by remember(item.route) { mutableFloatStateOf(0f) }
-            val isDragging = draggingRoute == item.route
-            val reorderStepPx = 56f
-            NavigationDrawerItem(
-                label = { Text(item.label) },
-                selected = currentRoute == item.route,
-                onClick = {
-                    onNavigate(item.route)
-                    scope.launch { drawerState.close() }
-                },
-                icon = { Icon(item.icon, contentDescription = item.label) },
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                    .graphicsLayer {
-                        translationY = dragOffsetY
-                        alpha = if (isDragging) 0.85f else 1f
-                    }
-                    .zIndex(if (isDragging) 1f else 0f)
-                    .pointerInput(item.route, items) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                dragOffsetY = 0f
-                                draggingRoute = item.route
-                            },
-                            onDragEnd = {
-                                dragOffsetY = 0f
-                                draggingRoute = null
-                            },
-                            onDragCancel = {
-                                dragOffsetY = 0f
-                                draggingRoute = null
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                dragOffsetY += dragAmount.y
-                                while (dragOffsetY > reorderStepPx) {
-                                    val currentIndex = items.indexOfFirst { it.route == item.route }
-                                    if (currentIndex in 0 until items.lastIndex) {
-                                        val reordered = items.toMutableList().apply {
-                                            add(currentIndex + 1, removeAt(currentIndex))
+            key(item.route) {
+                var dragOffsetY by remember(item.route) { mutableFloatStateOf(0f) }
+                var itemHeightPx by remember(item.route) { mutableFloatStateOf(0f) }
+                val isDragging = draggingRoute == item.route
+                NavigationDrawerItem(
+                    label = { Text(item.label) },
+                    selected = currentRoute == item.route,
+                    onClick = {
+                        onNavigate(item.route)
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(item.icon, contentDescription = item.label) },
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .graphicsLayer {
+                            translationY = dragOffsetY
+                            alpha = if (isDragging) 0.85f else 1f
+                        }
+                        .zIndex(if (isDragging) 1f else 0f)
+                        .onSizeChanged { size ->
+                            itemHeightPx = size.height.toFloat().coerceAtLeast(1f)
+                        }
+                        .pointerInput(item.route, items) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    dragOffsetY = 0f
+                                    draggingRoute = item.route
+                                },
+                                onDragEnd = {
+                                    dragOffsetY = 0f
+                                    draggingRoute = null
+                                },
+                                onDragCancel = {
+                                    dragOffsetY = 0f
+                                    draggingRoute = null
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    dragOffsetY += dragAmount.y
+                                    val reorderStepPx = itemHeightPx
+                                    while (dragOffsetY > reorderStepPx) {
+                                        val currentIndex = items.indexOfFirst { it.route == item.route }
+                                        if (currentIndex in 0 until items.lastIndex) {
+                                            val reordered = items.toMutableList().apply {
+                                                add(currentIndex + 1, removeAt(currentIndex))
+                                            }
+                                            onReorder(reordered)
                                         }
-                                        onReorder(reordered)
+                                        dragOffsetY -= reorderStepPx
                                     }
-                                    dragOffsetY -= reorderStepPx
-                                }
-                                while (dragOffsetY < -reorderStepPx) {
-                                    val currentIndex = items.indexOfFirst { it.route == item.route }
-                                    if (currentIndex > 0) {
-                                        val reordered = items.toMutableList().apply {
-                                            add(currentIndex - 1, removeAt(currentIndex))
+                                    while (dragOffsetY < -reorderStepPx) {
+                                        val currentIndex = items.indexOfFirst { it.route == item.route }
+                                        if (currentIndex > 0) {
+                                            val reordered = items.toMutableList().apply {
+                                                add(currentIndex - 1, removeAt(currentIndex))
+                                            }
+                                            onReorder(reordered)
                                         }
-                                        onReorder(reordered)
+                                        dragOffsetY += reorderStepPx
                                     }
-                                    dragOffsetY += reorderStepPx
                                 }
-                            }
-                        )
-                    }
-            )
+                            )
+                        }
+                )
+            }
         }
     }
 }

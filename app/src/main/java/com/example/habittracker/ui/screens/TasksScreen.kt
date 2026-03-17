@@ -72,6 +72,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.FabScrollClearance
 import com.example.habittracker.ui.viewmodel.TaskUiItem
 import com.example.habittracker.ui.viewmodel.TasksViewModel
 import com.example.habittracker.ui.viewmodel.ALL_CATEGORIES
@@ -208,7 +209,7 @@ fun TasksScreen(viewModel: TasksViewModel = hiltViewModel()) {
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = FabScrollClearance)
             ) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {

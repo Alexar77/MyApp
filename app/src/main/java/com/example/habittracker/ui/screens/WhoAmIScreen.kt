@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.FabScrollClearance
 import com.example.habittracker.ui.icons.AppIcons
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
@@ -125,7 +126,7 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
+                        .padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = FabScrollClearance),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -145,7 +146,8 @@ fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = FabScrollClearance)
                 ) {
                     items(state.notes, key = { it.id }) { note ->
                         NoteCard(

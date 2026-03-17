@@ -1,35 +1,22 @@
 package com.example.habittracker.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -41,358 +28,368 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.AppModalSheet
+import com.example.habittracker.ui.components.EmptyStateCard
+import com.example.habittracker.ui.components.PillLabel
+import com.example.habittracker.ui.components.PremiumCard
+import com.example.habittracker.ui.components.ScreenBackground
+import com.example.habittracker.ui.components.SectionHeader
+import com.example.habittracker.ui.components.SurfaceCard
 import com.example.habittracker.ui.icons.AppIcons
+import com.example.habittracker.ui.theme.MyAppTheme
 import com.example.habittracker.ui.viewmodel.WhoAmINoteUiState
 import com.example.habittracker.ui.viewmodel.WhoAmIViewModel
-import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WhoAmIScreen(viewModel: WhoAmIViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
+    val selectedNote = state.notes.firstOrNull { it.id == state.selectedNoteId }
 
-    var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var noteTitleInput by rememberSaveable { mutableStateOf("") }
-    var notePendingDelete by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
-    var notePendingRename by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isCreateSheetVisible by rememberSaveable { mutableStateOf(false) }
+    var newNoteTitle by rememberSaveable { mutableStateOf("") }
+    var renameTarget by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
     var renameInput by rememberSaveable { mutableStateOf("") }
-    var draggingNoteId by remember { mutableStateOf<Long?>(null) }
+    var pendingDelete by remember { mutableStateOf<WhoAmINoteUiState?>(null) }
 
-    var isRefreshing by rememberSaveable { mutableStateOf(false) }
-    val pullRefreshState = rememberPullRefreshState(
-        refreshing = isRefreshing,
-        onRefresh = { isRefreshing = true }
-    )
-    if (isRefreshing) {
-        LaunchedEffect(Unit) {
-            delay(650)
-            isRefreshing = false
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Who am I?") },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            if (state.notes.isEmpty()) return@IconButton
-                            val combined = state.notes.joinToString("\n\n") { note ->
-                                "${note.title}\n${note.content}"
-                            }
-                            clipboardManager.setText(AnnotatedString(combined))
-                        }
-                    ) {
-                        Icon(AppIcons.ContentCopy, contentDescription = "Copy all notes")
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { isAddDialogVisible = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add note")
+    if (selectedNote != null) {
+        JournalEditorScreen(
+            note = selectedNote,
+            isSaving = state.savingNoteId == selectedNote.id,
+            onBack = { viewModel.toggleNoteSelection(selectedNote.id) },
+            onContentChange = { content ->
+                viewModel.updateSelectedNoteContent(content)
+                viewModel.saveNoteContent(selectedNote.id, content)
+            },
+            onCopy = { clipboardManager.setText(AnnotatedString(selectedNote.content)) },
+            onRename = {
+                renameTarget = selectedNote
+                renameInput = selectedNote.title
+            },
+            onDelete = { pendingDelete = selectedNote }
+        )
+    } else {
+        val filteredNotes = remember(state.notes, searchQuery) {
+            state.notes.filter { note ->
+                searchQuery.isBlank() ||
+                    note.title.contains(searchQuery, ignoreCase = true) ||
+                    note.content.contains(searchQuery, ignoreCase = true)
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .pullRefresh(pullRefreshState)
-        ) {
-            if (state.notes.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "No notes yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Tap + to add a note",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Journal") },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                if (state.notes.isEmpty()) return@IconButton
+                                val combined = state.notes.joinToString("\n\n") { note ->
+                                    "${note.title}\n${note.content}"
+                                }
+                                clipboardManager.setText(AnnotatedString(combined))
+                            }
+                        ) {
+                            Icon(AppIcons.ContentCopy, contentDescription = "Copy all notes")
+                        }
+                    }
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { isCreateSheetVisible = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Create note")
                 }
-            } else {
+            }
+        ) { innerPadding ->
+            ScreenBackground {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(innerPadding)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
-                    items(state.notes, key = { it.id }) { note ->
-                        NoteCard(
-                            modifier = Modifier,
-                            note = note,
-                            expanded = state.selectedNoteId == note.id,
-                            isDragging = draggingNoteId == note.id,
-                            onToggleExpanded = { viewModel.toggleNoteSelection(note.id) },
-                            onMove = { direction -> viewModel.moveNote(note.id, direction) },
-                            onDragStart = { draggingNoteId = note.id },
-                            onDragEnd = { draggingNoteId = null },
-                            onCopy = {
-                                clipboardManager.setText(AnnotatedString(note.content))
-                            },
-                            onDelete = { notePendingDelete = note },
-                            onRename = {
-                                notePendingRename = note
-                                renameInput = note.title
-                            },
-                            isSaving = state.savingNoteId == note.id,
-                            onContentChange = { viewModel.updateSelectedNoteContent(it) },
-                            onSave = { viewModel.saveNoteContent(note.id, it) }
+                    item {
+                        PremiumCard(accent = MyAppTheme.extraColors.accent) {
+                            SectionHeader(
+                                title = "Private thinking space",
+                                subtitle = "Capture identity notes, beliefs, and reminders you want to revisit."
+                            )
+                            PillLabel(
+                                text = "${state.notes.size} notes",
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    item {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Search notes") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
                         )
+                    }
+
+                    if (filteredNotes.isEmpty()) {
+                        item {
+                            EmptyStateCard(
+                                title = if (state.notes.isEmpty()) "No notes yet" else "No matches",
+                                message = if (state.notes.isEmpty()) {
+                                    "Start with one note about who you are becoming."
+                                } else {
+                                    "Try a different word or create a new note."
+                                },
+                                actionLabel = "New note",
+                                onAction = { isCreateSheetVisible = true }
+                            )
+                        }
+                    } else {
+                        item {
+                            SectionHeader(
+                                title = "Recent notes",
+                                subtitle = "Tap a card to open the full editor."
+                            )
+                        }
+                        items(filteredNotes, key = { it.id }) { note ->
+                            JournalNoteCard(
+                                note = note,
+                                onOpen = { viewModel.toggleNoteSelection(note.id) },
+                                onRename = {
+                                    renameTarget = note
+                                    renameInput = note.title
+                                },
+                                onDelete = { pendingDelete = note }
+                            )
+                        }
                     }
                 }
             }
-
-            PullRefreshIndicator(
-                refreshing = isRefreshing,
-                state = pullRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter),
-                backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
         }
     }
 
-    if (isAddDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isAddDialogVisible = false },
-            title = { Text("Add note") },
-            text = {
-                OutlinedTextField(
-                    value = noteTitleInput,
-                    onValueChange = { noteTitleInput = it },
-                    label = { Text("Note title") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
+    if (isCreateSheetVisible) {
+        AppModalSheet(onDismissRequest = { isCreateSheetVisible = false }) {
+            SectionHeader(
+                title = "Create note",
+                subtitle = "Start with a short title. You can refine the content in the editor."
+            )
+            OutlinedTextField(
+                value = newNoteTitle,
+                onValueChange = { newNoteTitle = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Title") },
+                singleLine = true
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { isCreateSheetVisible = false }) { Text("Cancel") }
                 TextButton(
                     onClick = {
-                        if (noteTitleInput.isNotBlank()) {
-                            viewModel.createNote(noteTitleInput)
-                            noteTitleInput = ""
-                            isAddDialogVisible = false
-                        }
+                        if (newNoteTitle.isBlank()) return@TextButton
+                        viewModel.createNote(newNoteTitle.trim())
+                        newNoteTitle = ""
+                        isCreateSheetVisible = false
                     }
-                ) {
-                    Text("Add")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { isAddDialogVisible = false }) { Text("Cancel") }
+                ) { Text("Create") }
             }
-        )
+        }
     }
 
-    if (notePendingDelete != null) {
+    if (renameTarget != null) {
+        AppModalSheet(onDismissRequest = { renameTarget = null }) {
+            SectionHeader(title = "Rename note")
+            OutlinedTextField(
+                value = renameInput,
+                onValueChange = { renameInput = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Title") },
+                singleLine = true
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        val target = renameTarget ?: return@TextButton
+                        if (renameInput.isBlank()) return@TextButton
+                        viewModel.renameNote(target, renameInput.trim())
+                        renameTarget = null
+                    }
+                ) { Text("Save") }
+            }
+        }
+    }
+
+    if (pendingDelete != null) {
         AlertDialog(
-            onDismissRequest = { notePendingDelete = null },
+            onDismissRequest = { pendingDelete = null },
             title = { Text("Delete note") },
-            text = { Text("Do you want to delete \"${notePendingDelete?.title}\"?") },
+            text = { Text("Delete ${pendingDelete?.title}? This cannot be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        notePendingDelete?.let(viewModel::deleteNote)
-                        notePendingDelete = null
+                        pendingDelete?.let(viewModel::deleteNote)
+                        pendingDelete = null
                     }
                 ) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { notePendingDelete = null }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (notePendingRename != null) {
-        AlertDialog(
-            onDismissRequest = { notePendingRename = null },
-            title = { Text("Rename note") },
-            text = {
-                OutlinedTextField(
-                    value = renameInput,
-                    onValueChange = { renameInput = it },
-                    label = { Text("Note title") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val note = notePendingRename
-                        if (note != null && renameInput.isNotBlank()) {
-                            viewModel.renameNote(note, renameInput)
-                            notePendingRename = null
-                        }
-                    }
-                ) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { notePendingRename = null }) { Text("Cancel") }
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
             }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NoteCard(
-    modifier: Modifier = Modifier,
+private fun JournalEditorScreen(
     note: WhoAmINoteUiState,
-    expanded: Boolean,
-    isDragging: Boolean,
-    onToggleExpanded: () -> Unit,
-    onMove: (Int) -> Unit,
-    onDragStart: () -> Unit,
-    onDragEnd: () -> Unit,
-    onCopy: () -> Unit,
-    onDelete: () -> Unit,
-    onRename: () -> Unit,
     isSaving: Boolean,
+    onBack: () -> Unit,
     onContentChange: (String) -> Unit,
-    onSave: (String) -> Unit
+    onCopy: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    var dragOffsetY by remember(note.id) { mutableFloatStateOf(0f) }
-    val reorderStepPx = 72f
-    var localContent by rememberSaveable(note.id) { mutableStateOf(note.content) }
-    val dragContainerColor = if (isDragging) {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = dragContainerColor),
-        modifier = modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                translationY = dragOffsetY
-            }
-            .zIndex(if (isDragging) 1f else 0f)
-            .pointerInput(note.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = {
-                        dragOffsetY = 0f
-                        onDragStart()
-                    },
-                    onDragEnd = {
-                        dragOffsetY = 0f
-                        onDragEnd()
-                    },
-                    onDragCancel = {
-                        dragOffsetY = 0f
-                        onDragEnd()
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        dragOffsetY += dragAmount.y
+    var content by remember(note.id, note.content) { mutableStateOf(note.content) }
+    val formatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
 
-                        while (dragOffsetY > reorderStepPx) {
-                            onMove(1)
-                            dragOffsetY -= reorderStepPx
-                        }
-                        while (dragOffsetY < -reorderStepPx) {
-                            onMove(-1)
-                            dragOffsetY += reorderStepPx
-                        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(note.title) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                )
-            }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { onToggleExpanded() },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = note.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete note")
-                    }
+                },
+                actions = {
                     IconButton(onClick = onRename) {
                         Icon(Icons.Default.Edit, contentDescription = "Rename note")
                     }
-                    Icon(
-                        imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
-                        contentDescription = if (expanded) "Collapse note" else "Expand note"
-                    )
-                }
-            }
-
-            if (expanded) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     IconButton(onClick = onCopy) {
                         Icon(AppIcons.ContentCopy, contentDescription = "Copy note")
                     }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete note")
+                    }
                 }
+            )
+        }
+    ) { innerPadding ->
+        ScreenBackground {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                PremiumCard(accent = MyAppTheme.extraColors.accent) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        PillLabel(
+                            text = "Journal note",
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (isSaving) "Autosaving..." else "Saved",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isSaving) MyAppTheme.extraColors.warning else MyAppTheme.extraColors.success
+                        )
+                    }
+                    Text(
+                        text = "Created ${Instant.ofEpochMilli(note.createdAt).atZone(ZoneId.systemDefault()).toLocalDate().format(formatter)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = localContent,
+                    value = content,
                     onValueChange = {
-                        localContent = it
+                        content = it
                         onContentChange(it)
                     },
-                    minLines = 10,
-                    maxLines = Int.MAX_VALUE,
-                    label = { Text("Write your note") },
-                    shape = RoundedCornerShape(22.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    minLines = 16,
+                    label = { Text("Write without rushing") }
                 )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(
-                        onClick = { onSave(localContent) },
-                        enabled = !isSaving
-                    ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Saving...")
-                        } else {
-                            Text("Save")
-                        }
-                    }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JournalNoteCard(
+    note: WhoAmINoteUiState,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val formatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
+    SurfaceCard(
+        modifier = Modifier.clickable { onOpen() }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(note.title, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = note.content.ifBlank { "Open the note to start writing." }.take(140),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = Instant.ofEpochMilli(note.createdAt)
+                        .atZone(ZoneId.systemDefault())
+                        .toLocalDate()
+                        .format(formatter),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Row {
+                IconButton(onClick = onRename) {
+                    Icon(Icons.Default.Edit, contentDescription = "Rename")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete")
                 }
             }
         }

@@ -6,9 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,8 +20,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -43,7 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.habittracker.ui.components.AppModalSheet
+import com.example.habittracker.ui.components.EmptyStateCard
+import com.example.habittracker.ui.components.PillLabel
+import com.example.habittracker.ui.components.PremiumCard
+import com.example.habittracker.ui.components.ScreenBackground
+import com.example.habittracker.ui.components.SectionHeader
+import com.example.habittracker.ui.components.SurfaceCard
 import com.example.habittracker.ui.icons.AppIcons
+import com.example.habittracker.ui.theme.MyAppTheme
 import com.example.habittracker.ui.viewmodel.BirthdayUiItem
 import com.example.habittracker.ui.viewmodel.BirthdaysViewModel
 import java.time.Instant
@@ -51,6 +59,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,12 +67,12 @@ fun BirthdaysScreen(
     onBack: () -> Unit = {},
     viewModel: BirthdaysViewModel = hiltViewModel()
 ) {
-    val screenState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val today = remember(state.birthdays) { LocalDate.now() }
 
-    var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var isEditDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var editTarget by remember { mutableStateOf<BirthdayUiItem?>(null) }
+    var isEditorVisible by rememberSaveable { mutableStateOf(false) }
+    var editingBirthdayId by rememberSaveable { mutableStateOf<Long?>(null) }
     var nameInput by rememberSaveable { mutableStateOf("") }
     var dateInput by rememberSaveable { mutableStateOf("") }
     var reminderDateTimes by remember { mutableStateOf(listOf<Long>()) }
@@ -71,14 +80,16 @@ fun BirthdaysScreen(
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy") }
     val dateTimeFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm") }
+    val nextBirthday = state.birthdays.firstOrNull()
 
-    fun resetForm() {
-        nameInput = ""
-        dateInput = ""
-        reminderDateTimes = emptyList()
+    fun resetForm(target: BirthdayUiItem? = null) {
+        editingBirthdayId = target?.id
+        nameInput = target?.name.orEmpty()
+        dateInput = target?.let { LocalDate.of(it.year, it.month, it.day).toString() }.orEmpty()
+        reminderDateTimes = target?.reminderDateTimes.orEmpty()
     }
 
-    fun openReminderDateTimePicker() {
+    fun openReminderPicker() {
         val currentDateTime = LocalDateTime.now()
         DatePickerDialog(
             context,
@@ -86,13 +97,10 @@ fun BirthdaysScreen(
                 TimePickerDialog(
                     context,
                     { _, hour, minute ->
-                        val millis = LocalDateTime.of(
-                            year,
-                            month + 1,
-                            dayOfMonth,
-                            hour,
-                            minute
-                        ).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        val millis = LocalDateTime.of(year, month + 1, dayOfMonth, hour, minute)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli()
                         reminderDateTimes = (reminderDateTimes + millis).distinct().sorted()
                     },
                     currentDateTime.hour,
@@ -103,6 +111,19 @@ fun BirthdaysScreen(
             currentDateTime.year,
             currentDateTime.monthValue - 1,
             currentDateTime.dayOfMonth
+        ).show()
+    }
+
+    fun openDatePicker() {
+        val currentDate = runCatching { LocalDate.parse(dateInput) }.getOrNull() ?: LocalDate.now()
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                dateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
+            },
+            currentDate.year,
+            currentDate.monthValue - 1,
+            currentDate.dayOfMonth
         ).show()
     }
 
@@ -121,95 +142,111 @@ fun BirthdaysScreen(
             FloatingActionButton(
                 onClick = {
                     resetForm()
-                    isAddDialogVisible = true
+                    isEditorVisible = true
                 }
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add birthday")
             }
         }
     ) { innerPadding ->
-        if (screenState.birthdays.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "No birthdays yet",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Tap + to add one",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
+        ScreenBackground {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(vertical = 16.dp)
             ) {
-                items(screenState.birthdays, key = { it.id }) { birthday ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(AppIcons.Cake, contentDescription = null)
-                                    Text(
-                                        text = birthday.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = "Birthday: ${
-                                        LocalDate.of(birthday.year, birthday.month, birthday.day).format(dateFormatter)
-                                    }",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "Next: ${birthday.nextOccurrence.format(dateFormatter)}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "Reminders: ${birthday.reminderDateTimes.size}",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                item {
+                    if (nextBirthday != null) {
+                        val daysAway = ChronoUnit.DAYS.between(today, nextBirthday.nextOccurrence)
+                        PremiumCard(accent = MyAppTheme.extraColors.accent) {
+                            PillLabel(
+                                text = if (daysAway == 0L) "Today" else "$daysAway days away",
+                                color = MyAppTheme.extraColors.accent,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = nextBirthday.name,
+                                style = MaterialTheme.typography.displayMedium
+                            )
+                            Text(
+                                text = "Next celebration on ${nextBirthday.nextOccurrence.format(dateFormatter)}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        EmptyStateCard(
+                            title = "No birthdays yet",
+                            message = "Add people you want to remember and schedule reminders that feel intentional.",
+                            actionLabel = "Add birthday",
+                            onAction = {
+                                resetForm()
+                                isEditorVisible = true
                             }
-                            Row {
-                                IconButton(
-                                    onClick = {
-                                        editTarget = birthday
-                                        nameInput = birthday.name
-                                        dateInput = LocalDate.of(
-                                            birthday.year,
-                                            birthday.month,
-                                            birthday.day
-                                        ).toString()
-                                        reminderDateTimes = birthday.reminderDateTimes
-                                        isEditDialogVisible = true
-                                    }
+                        )
+                    }
+                }
+
+                state.birthdays.groupBy { it.nextOccurrence.month }.forEach { (month, birthdays) ->
+                    item {
+                        SectionHeader(
+                            title = month.name.lowercase().replaceFirstChar(Char::titlecase),
+                            subtitle = "${birthdays.size} upcoming"
+                        )
+                    }
+                    items(birthdays, key = { it.id }) { birthday ->
+                        val daysAway = ChronoUnit.DAYS.between(today, birthday.nextOccurrence)
+                        SurfaceCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit birthday")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(AppIcons.Cake, contentDescription = null, tint = MyAppTheme.extraColors.warning)
+                                        Text(
+                                            birthday.name,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Text(
+                                        "Birthday: ${LocalDate.of(birthday.year, birthday.month, birthday.day).format(dateFormatter)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        PillLabel(
+                                            text = if (daysAway == 0L) "Today" else "In $daysAway days",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        PillLabel(
+                                            text = "${birthday.reminderDateTimes.size} reminders",
+                                            color = MyAppTheme.extraColors.warning,
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { pendingDelete = birthday }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete birthday")
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            resetForm(birthday)
+                                            isEditorVisible = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit birthday")
+                                    }
+                                    IconButton(onClick = { pendingDelete = birthday }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete birthday")
+                                    }
                                 }
                             }
                         }
@@ -219,126 +256,92 @@ fun BirthdaysScreen(
         }
     }
 
-    @Composable
-    fun BirthdayFormContent() {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (isEditorVisible) {
+        AppModalSheet(onDismissRequest = { isEditorVisible = false }) {
+            SectionHeader(
+                title = if (editingBirthdayId == null) "Add birthday" else "Edit birthday",
+                subtitle = "Clear date, reminders, and a cleaner celebration overview."
+            )
             OutlinedTextField(
                 value = nameInput,
                 onValueChange = { nameInput = it },
-                singleLine = true,
-                label = { Text("Name") }
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Name") },
+                singleLine = true
             )
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        val currentDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
-                            ?: LocalDate.now()
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, dayOfMonth ->
-                                dateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
-                            },
-                            currentDate.year,
-                            currentDate.monthValue - 1,
-                            currentDate.dayOfMonth
-                        ).show()
-                    }
+                    .clickable { openDatePicker() }
             ) {
                 OutlinedTextField(
                     value = dateInput,
                     onValueChange = {},
+                    readOnly = true,
                     enabled = false,
-                    singleLine = true,
-                    label = { Text("Birthday date (includes year)") },
-                    trailingIcon = { Icon(AppIcons.Cake, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Birthday date") },
+                    trailingIcon = { Icon(AppIcons.Cake, contentDescription = null) }
                 )
             }
-
-            TextButton(onClick = { openReminderDateTimePicker() }) {
-                Text("Add reminder date/time")
-            }
-
-            reminderDateTimes.forEach { millis ->
-                val text = remember(millis) {
-                    Instant.ofEpochMilli(millis)
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDateTime()
-                        .format(dateTimeFormatter)
+            SurfaceCard(contentPadding = PaddingValues(14.dp)) {
+                SectionHeader(
+                    title = "Reminders",
+                    subtitle = if (reminderDateTimes.isEmpty()) "No reminders yet" else "${reminderDateTimes.size} scheduled"
+                )
+                TextButton(onClick = { openReminderPicker() }) {
+                    Text("Add reminder")
                 }
-                AssistChip(
-                    onClick = { reminderDateTimes = reminderDateTimes - millis },
-                    label = { Text("$text  (tap to remove)") }
-                )
+                if (reminderDateTimes.isNotEmpty()) {
+                    reminderDateTimes.forEach { millis ->
+                        PillLabel(
+                            text = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDateTime()
+                                .format(dateTimeFormatter),
+                            color = MyAppTheme.extraColors.warning,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { isEditorVisible = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        val parsedDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
+                        if (nameInput.isBlank() || parsedDate == null) return@TextButton
+                        if (editingBirthdayId == null) {
+                            viewModel.addBirthday(nameInput.trim(), parsedDate, reminderDateTimes)
+                        } else {
+                            viewModel.updateBirthday(editingBirthdayId!!, nameInput.trim(), parsedDate, reminderDateTimes)
+                        }
+                        isEditorVisible = false
+                    }
+                ) {
+                    Text(if (editingBirthdayId == null) "Save" else "Update")
+                }
             }
         }
-    }
-
-    if (isAddDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isAddDialogVisible = false },
-            title = { Text("Add birthday") },
-            text = { BirthdayFormContent() },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val parsedDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
-                        if (nameInput.isNotBlank() && parsedDate != null) {
-                            viewModel.addBirthday(nameInput, parsedDate, reminderDateTimes)
-                            resetForm()
-                            isAddDialogVisible = false
-                        }
-                    }
-                ) { Text("Add") }
-            },
-            dismissButton = {
-                TextButton(onClick = { isAddDialogVisible = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (isEditDialogVisible && editTarget != null) {
-        AlertDialog(
-            onDismissRequest = { isEditDialogVisible = false },
-            title = { Text("Edit birthday") },
-            text = { BirthdayFormContent() },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val target = editTarget ?: return@TextButton
-                        val parsedDate = runCatching { LocalDate.parse(dateInput) }.getOrNull()
-                        if (nameInput.isNotBlank() && parsedDate != null) {
-                            viewModel.updateBirthday(
-                                id = target.id,
-                                name = nameInput,
-                                date = parsedDate,
-                                reminderDateTimes = reminderDateTimes
-                            )
-                            isEditDialogVisible = false
-                        }
-                    }
-                ) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { isEditDialogVisible = false }) { Text("Cancel") }
-            }
-        )
     }
 
     if (pendingDelete != null) {
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("Delete birthday") },
-            text = { Text("Do you want to delete \"${pendingDelete?.name}\"?") },
+            text = { Text("Remove ${pendingDelete?.name} and all birthday reminders?") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         pendingDelete?.let { viewModel.deleteBirthday(it.id) }
                         pendingDelete = null
                     }
-                ) { Text("Delete") }
+                ) {
+                    Text("Delete")
+                }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }

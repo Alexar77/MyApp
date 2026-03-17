@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 data class WhoAmINoteUiState(
     val id: Long,
     val title: String,
-    val content: String
+    val content: String,
+    val createdAt: Long
 )
 
 data class WhoAmIUiState(
@@ -40,7 +41,12 @@ class WhoAmIViewModel @Inject constructor(
         viewModelScope.launch {
             habitRepository.observeWhoAmINotes().distinctUntilChanged().collect { notes ->
                 val noteUiList = notes.map { note ->
-                    WhoAmINoteUiState(id = note.id, title = note.title, content = note.content)
+                    WhoAmINoteUiState(
+                        id = note.id,
+                        title = note.title,
+                        content = note.content,
+                        createdAt = note.createdAt
+                    )
                 }
 
                 mutableUiState.update { currentState ->

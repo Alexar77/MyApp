@@ -5,44 +5,49 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,300 +55,401 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.habittracker.ui.components.MonthCalendar
-import com.example.habittracker.ui.icons.AppIcons
-import com.example.habittracker.ui.viewmodel.GlobalDayDetails
-import com.example.habittracker.ui.viewmodel.MainViewModel
 import com.example.habittracker.repository.HabitRepository.HabitFrequencyType
+import com.example.habittracker.ui.components.AppModalSheet
+import com.example.habittracker.ui.components.EmptyStateCard
+import com.example.habittracker.ui.components.LoadingRow
+import com.example.habittracker.ui.components.PillLabel
+import com.example.habittracker.ui.components.PremiumCard
+import com.example.habittracker.ui.components.ScreenBackground
+import com.example.habittracker.ui.components.SectionHeader
+import com.example.habittracker.ui.components.SummaryChip
+import com.example.habittracker.ui.components.SurfaceCard
+import com.example.habittracker.ui.components.InlineProgressLabel
+import com.example.habittracker.ui.icons.AppIcons
+import com.example.habittracker.ui.theme.MyAppTheme
+import com.example.habittracker.ui.viewmodel.HabitOptionUiState
+import com.example.habittracker.ui.viewmodel.MainViewModel
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private data class MainScreenHeaderState(
-    val monthLabel: String
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onOpenBirthdays: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
+    onOpenMotivation: () -> Unit = {},
+    onOpenTasks: () -> Unit = {},
+    onOpenStats: (Long) -> Unit = {},
     viewModel: MainViewModel = hiltViewModel()
 ) {
     val screenState by viewModel.uiState.collectAsStateWithLifecycle()
-    val hasSnapshotContent = screenState.selectedHabitId != null ||
-        screenState.scheduledDates.isNotEmpty() ||
-        screenState.globalScheduledDates.isNotEmpty() ||
-        screenState.globalBirthdayDates.isNotEmpty() ||
-        screenState.dayNotesByDate.isNotEmpty()
-    val headerState = remember(screenState.selectedMonth) {
-        MainScreenHeaderState(
-            monthLabel = screenState.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-        )
-    }
-
-    var isAddDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var habitNameInput by rememberSaveable { mutableStateOf("") }
-    var showMoreHabitOptions by rememberSaveable { mutableStateOf(false) }
-    var createdDateInput by rememberSaveable { mutableStateOf("") }
-    var frequencyTypeInput by rememberSaveable { mutableStateOf(HabitFrequencyType.DAILY.name) }
-    var frequencyIntervalInput by rememberSaveable { mutableStateOf("3") }
-    var frequencyWeekdaysInput by rememberSaveable { mutableStateOf(setOf(DayOfWeek.MONDAY.value)) }
-    var reminderEnabledInput by rememberSaveable { mutableStateOf(false) }
-    var reminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
-    var reminderTimesInput by remember { mutableStateOf(listOf("09:00")) }
-    var reminderMessageInput by rememberSaveable { mutableStateOf("") }
-    var createdDateError by rememberSaveable { mutableStateOf(false) }
-    var reminderTimeError by rememberSaveable { mutableStateOf(false) }
-
-    var isEditDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var editHabitNameInput by rememberSaveable { mutableStateOf("") }
-    var editFrequencyTypeInput by rememberSaveable { mutableStateOf(HabitFrequencyType.DAILY.name) }
-    var editFrequencyIntervalInput by rememberSaveable { mutableStateOf("3") }
-    var editFrequencyWeekdaysInput by rememberSaveable { mutableStateOf(setOf(DayOfWeek.MONDAY.value)) }
-    var editReminderEnabledInput by rememberSaveable { mutableStateOf(false) }
-    var editReminderTimeInput by rememberSaveable { mutableStateOf("09:00") }
-    var editReminderTimesInput by remember { mutableStateOf(listOf("09:00")) }
-    var editReminderMessageInput by rememberSaveable { mutableStateOf("") }
-    var editReminderTimeError by rememberSaveable { mutableStateOf(false) }
-
-    var isDayNoteDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var selectedNoteDate by rememberSaveable { mutableStateOf("") }
-    var dayNoteInput by rememberSaveable { mutableStateOf("") }
-
-    var isDeleteHabitConfirmVisible by rememberSaveable { mutableStateOf(false) }
-    var isSeedDataConfirmVisible by rememberSaveable { mutableStateOf(false) }
-    var isGlobalDayDetailsDialogVisible by rememberSaveable { mutableStateOf(false) }
-    var isHabitDropdownExpanded by rememberSaveable { mutableStateOf(false) }
-    var globalDayDetails by remember { mutableStateOf<GlobalDayDetails?>(null) }
     val context = LocalContext.current
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { }
 
+    val selectedHabit = remember(screenState.habits, screenState.selectedHabitId) {
+        screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }
+    }
+    val monthLabel = remember(screenState.selectedMonth) {
+        screenState.selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+    }
+    val completionCount = screenState.completedDates.size
+    val scheduledCount = screenState.scheduledDates.size
+    val selectedToday = screenState.businessToday.toString()
+    val todayNote = screenState.dayNotesByDate[selectedToday].orEmpty()
+
+    var isHabitEditorVisible by rememberSaveable { mutableStateOf(false) }
+    var editingHabit by remember { mutableStateOf<HabitOptionUiState?>(null) }
+    var habitNameInput by rememberSaveable { mutableStateOf("") }
+    var createdDateInput by rememberSaveable { mutableStateOf("") }
+    var frequencyTypeInput by rememberSaveable { mutableStateOf(HabitFrequencyType.DAILY.name) }
+    var frequencyIntervalInput by rememberSaveable { mutableStateOf("3") }
+    var frequencyWeekdaysInput by rememberSaveable { mutableStateOf(setOf(DayOfWeek.MONDAY.value)) }
+    var reminderEnabledInput by rememberSaveable { mutableStateOf(false) }
+    var reminderTimesInput by remember { mutableStateOf(listOf("09:00")) }
+    var reminderMessageInput by rememberSaveable { mutableStateOf("") }
+    var createdDateError by rememberSaveable { mutableStateOf(false) }
+    var reminderTimeError by rememberSaveable { mutableStateOf(false) }
+
+    var isDayNoteSheetVisible by rememberSaveable { mutableStateOf(false) }
+    var selectedNoteDate by rememberSaveable { mutableStateOf(selectedToday) }
+    var dayNoteInput by rememberSaveable { mutableStateOf("") }
+    var isDeleteConfirmVisible by rememberSaveable { mutableStateOf(false) }
+    var isQuickActionsVisible by rememberSaveable { mutableStateOf(false) }
+
+    fun resetHabitEditor(target: HabitOptionUiState?) {
+        editingHabit = target
+        habitNameInput = target?.name.orEmpty()
+        createdDateInput = target?.let {
+            Instant.ofEpochMilli(it.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
+        }?.toString().orEmpty()
+        frequencyTypeInput = target?.frequencyType ?: HabitFrequencyType.DAILY.name
+        frequencyIntervalInput = (target?.frequencyIntervalDays ?: 3).toString()
+        frequencyWeekdaysInput = target?.let { viewModel.parseFrequencyWeekdays(it.frequencyWeekdays) }
+            ?.ifEmpty { setOf(DayOfWeek.MONDAY.value) }
+            ?: setOf(DayOfWeek.MONDAY.value)
+        reminderEnabledInput = target?.reminderEnabled == true
+        reminderTimesInput = target?.let { viewModel.parseReminderTimesCsv(it.reminderTime) }?.ifEmpty { listOf("09:00") }
+            ?: listOf("09:00")
+        reminderMessageInput = target?.reminderMessage.orEmpty()
+        createdDateError = false
+        reminderTimeError = false
+    }
+
+    fun openCreatedDatePicker() {
+        val current = runCatching { LocalDate.parse(createdDateInput) }.getOrNull() ?: LocalDate.now()
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                createdDateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
+                createdDateError = false
+            },
+            current.year,
+            current.monthValue - 1,
+            current.dayOfMonth
+        ).show()
+    }
+
+    fun openReminderTimePicker(onSelected: (String) -> Unit) {
+        val parsed = runCatching { LocalTime.parse(reminderTimesInput.firstOrNull() ?: "09:00") }.getOrNull()
+            ?: LocalTime.of(9, 0)
+        TimePickerDialog(
+            context,
+            { _, hour, minute ->
+                onSelected(String.format("%02d:%02d", hour, minute))
+                reminderTimeError = false
+            },
+            parsed.hour,
+            parsed.minute,
+            true
+        ).show()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("MyApp") },
+                title = { Text("Today") },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            onOpenNotifications()
-                        }
-                    ) {
-                        Icon(AppIcons.NotificationsActive, contentDescription = "Open notifications")
+                    IconButton(onClick = onOpenMotivation) {
+                        Icon(Icons.Default.Star, contentDescription = "Open motivation")
                     }
-                    IconButton(onClick = onOpenBirthdays) {
-                        Icon(AppIcons.Cake, contentDescription = "Open birthdays")
-                    }
-                    TextButton(onClick = { isSeedDataConfirmVisible = true }) {
-                        Text("Seed")
-                    }
-                    IconButton(
-                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
-                        onClick = {
-                            val selectedHabit = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }
-                            if (selectedHabit != null) {
-                                editHabitNameInput = selectedHabit.name
-                                editFrequencyTypeInput = selectedHabit.frequencyType
-                                editFrequencyIntervalInput = (selectedHabit.frequencyIntervalDays ?: 3).toString()
-                                editFrequencyWeekdaysInput = viewModel.parseFrequencyWeekdays(
-                                    selectedHabit.frequencyWeekdays
-                                ).ifEmpty { setOf(DayOfWeek.MONDAY.value) }
-                                editReminderEnabledInput = selectedHabit.reminderEnabled
-                                editReminderTimesInput = viewModel.parseReminderTimesCsv(selectedHabit.reminderTime)
-                                    .ifEmpty { listOf("09:00") }
-                                editReminderTimeInput = editReminderTimesInput.firstOrNull() ?: "09:00"
-                                editReminderMessageInput = selectedHabit.reminderMessage.orEmpty()
-                                editReminderTimeError = false
-                                isEditDialogVisible = true
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit selected habit")
-                    }
-                    IconButton(
-                        enabled = screenState.isDataLoaded && screenState.selectedHabitId != null,
-                        onClick = { isDeleteHabitConfirmVisible = true }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete selected habit")
+                    IconButton(onClick = onOpenNotifications) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Open notifications")
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                reminderTimeInput = "09:00"
-                reminderTimesInput = listOf("09:00")
-                isAddDialogVisible = true
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "Add habit")
+            FloatingActionButton(onClick = { isQuickActionsVisible = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Create")
             }
         }
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (!screenState.isDataLoaded && !hasSnapshotContent) {
-                HomeLoadingState()
-            } else if (screenState.habits.isEmpty() && !hasSnapshotContent) {
+        ScreenBackground {
+            if (!screenState.isDataLoaded && screenState.habits.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .padding(innerPadding)
                         .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = "No habits yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Tap + to create your first habit",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    LoadingRow("Loading your daily system...")
+                }
+            } else if (screenState.habits.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    EmptyStateCard(
+                        title = "Start with one habit",
+                        message = "Build Today around a single repeatable action, then expand from there.",
+                        actionLabel = "Create habit",
+                        onAction = {
+                            resetHabitEditor(null)
+                            isHabitEditorVisible = true
+                        }
                     )
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
+                        .padding(innerPadding)
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
                     item {
-                        Surface(
-                            tonalElevation = 1.dp,
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.fillMaxWidth()
+                        PremiumCard(accent = MaterialTheme.colorScheme.primary) {
+                            PillLabel(
+                                text = "Today ${screenState.businessToday.format(DateTimeFormatter.ofPattern("dd MMM"))}",
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = selectedHabit?.name ?: "Your habits",
+                                style = MaterialTheme.typography.displayMedium
+                            )
+                            Text(
+                                text = if (selectedHabit != null) {
+                                    "${selectedHabit.currentStreak} day streak. Keep the standard visible and easy to hit."
+                                } else {
+                                    "Choose a habit and make today's action obvious."
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                InlineProgressLabel("Completed", completionCount.toString(), MyAppTheme.extraColors.success)
+                                InlineProgressLabel("Scheduled", scheduledCount.toString(), MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+
+                    item {
+                        SectionHeader(
+                            title = "Habits",
+                            subtitle = "Swipe between your active habits"
+                        )
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Month overview",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "All habits",
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                MonthCalendar(
-                                    month = screenState.selectedMonth,
-                                    completedDates = screenState.globalCompletedDates,
-                                    scheduledDates = screenState.globalScheduledDates,
-                                    birthdayDates = screenState.globalBirthdayDates,
-                                    noteDates = screenState.globalNoteDates,
-                                    todayDate = screenState.businessToday,
-                                    onToggleDate = { date ->
-                                        globalDayDetails = viewModel.getGlobalDayDetails(date)
-                                        isGlobalDayDetailsDialogVisible = true
-                                    },
-                                    onOpenDayNote = { },
-                                    interactive = screenState.isDataLoaded
+                            screenState.habits.forEach { habit ->
+                                SummaryChip(
+                                    text = "${habit.name} ${habit.currentStreak}",
+                                    selected = habit.id == screenState.selectedHabitId,
+                                    onClick = { viewModel.selectHabit(habit.id) }
                                 )
                             }
                         }
                     }
 
                     item {
-                        Surface(
-                            tonalElevation = 2.dp,
-                            shape = MaterialTheme.shapes.large,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                        SurfaceCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val selectedHabitLabel = screenState.habits.firstOrNull { it.id == screenState.selectedHabitId }?.let { habit ->
-                                    "${habit.name} \uD83D\uDD25 ${habit.currentStreak}"
-                                } ?: if (hasSnapshotContent) "Saved snapshot" else "Select habit"
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                IconButton(onClick = { viewModel.showPreviousMonth() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous month")
+                                }
+                                Text(monthLabel, style = MaterialTheme.typography.headlineMedium)
+                                IconButton(onClick = { viewModel.showNextMonth() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next month")
+                                }
+                            }
+                            HabitMonthCalendar(
+                                month = screenState.selectedMonth,
+                                completedDates = screenState.completedDates,
+                                scheduledDates = screenState.scheduledDates,
+                                birthdayDates = screenState.globalBirthdayDates,
+                                noteDates = screenState.dayNotesByDate.keys,
+                                todayDate = screenState.businessToday,
+                                onToggleDate = viewModel::toggleDay,
+                                onOpenDayNote = { date ->
+                                    selectedNoteDate = date
+                                    dayNoteInput = screenState.dayNotesByDate[date].orEmpty()
+                                    isDayNoteSheetVisible = true
+                                },
+                                interactive = true
+                            )
+                        }
+                    }
+
+                    item {
+                        SectionHeader(title = "Today actions", subtitle = "High-frequency shortcuts for the selected habit")
+                    }
+
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SurfaceCard(modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = MyAppTheme.extraColors.success)
+                                Text("Mark today", style = MaterialTheme.typography.titleMedium)
+                                TextButton(onClick = { viewModel.toggleDay(selectedToday) }) {
+                                    Text("Complete")
+                                }
+                            }
+                            SurfaceCard(modifier = Modifier.weight(1f)) {
+                                Icon(AppIcons.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Text("Daily note", style = MaterialTheme.typography.titleMedium)
+                                TextButton(
+                                    onClick = {
+                                        selectedNoteDate = selectedToday
+                                        dayNoteInput = todayNote
+                                        isDayNoteSheetVisible = true
+                                    }
                                 ) {
-                                    IconButton(onClick = { viewModel.showPreviousMonth() }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Previous month"
-                                        )
-                                    }
-                                    Text(
-                                        text = headerState.monthLabel,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    IconButton(onClick = { viewModel.showNextMonth() }) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowForward,
-                                            contentDescription = "Next month"
-                                        )
-                                    }
+                                    Text(if (todayNote.isBlank()) "Add note" else "Edit note")
                                 }
-
-                                Box(modifier = Modifier.fillMaxWidth()) {
-                                    OutlinedButton(
-                                        onClick = { isHabitDropdownExpanded = true },
-                                        enabled = screenState.habits.isNotEmpty(),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(selectedHabitLabel)
-                                    }
-                                    DropdownMenu(
-                                        expanded = isHabitDropdownExpanded,
-                                        onDismissRequest = { isHabitDropdownExpanded = false },
-                                        modifier = Modifier.fillMaxWidth(0.94f)
-                                    ) {
-                                        screenState.habits.forEach { habitOption ->
-                                            DropdownMenuItem(
-                                                text = { Text("${habitOption.name} \uD83D\uDD25 ${habitOption.currentStreak}") },
-                                                onClick = {
-                                                    isHabitDropdownExpanded = false
-                                                    viewModel.selectHabit(habitOption.id)
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-
-                                MonthCalendar(
-                                    month = screenState.selectedMonth,
-                                    completedDates = screenState.completedDates,
-                                    scheduledDates = screenState.scheduledDates,
-                                    birthdayDates = emptySet(),
-                                    noteDates = screenState.dayNotesByDate.keys,
-                                    todayDate = screenState.businessToday,
-                                    onToggleDate = viewModel::toggleDay,
-                                    onOpenDayNote = { date ->
-                                        selectedNoteDate = date
-                                        dayNoteInput = screenState.dayNotesByDate[date].orEmpty()
-                                        isDayNoteDialogVisible = true
+                            }
+                            SurfaceCard(modifier = Modifier.weight(1f)) {
+                                Icon(AppIcons.AccessTime, contentDescription = null, tint = MyAppTheme.extraColors.warning)
+                                Text("Insights", style = MaterialTheme.typography.titleMedium)
+                                TextButton(
+                                    onClick = {
+                                        selectedHabit?.let { onOpenStats(it.id) }
                                     },
-                                    interactive = screenState.isDataLoaded
-                                )
+                                    enabled = selectedHabit != null
+                                ) {
+                                    Text("Open stats")
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        SectionHeader(title = "Secondary panels", subtitle = "Birthdays, reminders, and tools")
+                    }
+
+                    item {
+                        SurfaceCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Birthdays", style = MaterialTheme.typography.titleLarge)
+                                    Text(
+                                        "${screenState.globalBirthdayDates.size} marked days this month",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(onClick = onOpenBirthdays) { Text("Open") }
+                            }
+                        }
+                    }
+
+                    item {
+                        SurfaceCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Reminders", style = MaterialTheme.typography.titleLarge)
+                                    Text(
+                                        if (selectedHabit?.reminderEnabled == true) {
+                                            "Habit reminders at ${selectedHabit.reminderTime.orEmpty()}"
+                                        } else {
+                                            "No reminder enabled for the selected habit"
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(onClick = onOpenNotifications) { Text("Manage") }
+                            }
+                        }
+                    }
+
+                    item {
+                        SurfaceCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("Habit tools", style = MaterialTheme.typography.titleLarge)
+                                    Text(
+                                        "Edit the selected habit or seed demo data.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            resetHabitEditor(selectedHabit)
+                                            isHabitEditorVisible = true
+                                        },
+                                        enabled = selectedHabit != null
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit habit")
+                                    }
+                                    IconButton(
+                                        onClick = { isDeleteConfirmVisible = true },
+                                        enabled = selectedHabit != null
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete habit")
+                                    }
+                                    TextButton(onClick = { viewModel.seedTestData() }) {
+                                        Text("Seed")
+                                    }
+                                }
                             }
                         }
                     }
@@ -352,699 +458,412 @@ fun MainScreen(
         }
     }
 
-    if (isAddDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isAddDialogVisible = false },
-            title = { Text("Create habit") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (isHabitEditorVisible) {
+        AppModalSheet(onDismissRequest = { isHabitEditorVisible = false }) {
+            SectionHeader(
+                title = if (editingHabit == null) "Create habit" else "Edit habit",
+                subtitle = "Keep the setup flexible, but default to the simplest schedule possible."
+            )
+            OutlinedTextField(
+                value = habitNameInput,
+                onValueChange = { habitNameInput = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Habit name") },
+                singleLine = true
+            )
+            if (editingHabit == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openCreatedDatePicker() }
+                ) {
                     OutlinedTextField(
-                        value = habitNameInput,
-                        onValueChange = { habitNameInput = it },
-                        singleLine = true,
-                        label = { Text("Habit name") }
+                        value = createdDateInput,
+                        onValueChange = {},
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false,
+                        readOnly = true,
+                        label = { Text("Created date") },
+                        isError = createdDateError,
+                        trailingIcon = { Icon(AppIcons.CalendarToday, contentDescription = null) }
                     )
+                }
+            }
 
-                    TextButton(onClick = { showMoreHabitOptions = !showMoreHabitOptions }) {
-                        Text(if (showMoreHabitOptions) "Hide options" else "More options")
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Frequency", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SummaryChip(
+                        text = "Daily",
+                        selected = frequencyTypeInput == HabitFrequencyType.DAILY.name,
+                        onClick = { frequencyTypeInput = HabitFrequencyType.DAILY.name }
+                    )
+                    SummaryChip(
+                        text = "Weekly",
+                        selected = frequencyTypeInput == HabitFrequencyType.WEEKLY.name,
+                        onClick = { frequencyTypeInput = HabitFrequencyType.WEEKLY.name }
+                    )
+                    SummaryChip(
+                        text = "Every N",
+                        selected = frequencyTypeInput == HabitFrequencyType.EVERY_N_DAYS.name,
+                        onClick = { frequencyTypeInput = HabitFrequencyType.EVERY_N_DAYS.name }
+                    )
+                }
+            }
 
-                    if (showMoreHabitOptions) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val current = runCatching { LocalDate.parse(createdDateInput) }.getOrNull()
-                                        ?: LocalDate.now()
-                                    DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            createdDateInput = LocalDate.of(year, month + 1, dayOfMonth).toString()
-                                            createdDateError = false
-                                        },
-                                        current.year,
-                                        current.monthValue - 1,
-                                        current.dayOfMonth
-                                    ).show()
-                                }
-                        ) {
-                            OutlinedTextField(
-                                value = createdDateInput,
-                                onValueChange = {},
-                                singleLine = true,
-                                enabled = false,
-                                isError = createdDateError,
-                                label = { Text("Created date (YYYY-MM-DD)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surface,
-                                    disabledSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                trailingIcon = {
-                                    Icon(AppIcons.CalendarToday, contentDescription = "Select created date")
-                                },
-                                supportingText = {
-                                    Text(
-                                        if (createdDateError) "Use format YYYY-MM-DD"
-                                        else "Leave empty to use today"
-                                    )
-                                }
-                            )
-                        }
-
-                        Text(
-                            text = "Frequency",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (frequencyTypeInput == HabitFrequencyType.WEEKLY.name) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        DayOfWeek.MONDAY.value to "Mon",
+                        DayOfWeek.TUESDAY.value to "Tue",
+                        DayOfWeek.WEDNESDAY.value to "Wed",
+                        DayOfWeek.THURSDAY.value to "Thu",
+                        DayOfWeek.FRIDAY.value to "Fri",
+                        DayOfWeek.SATURDAY.value to "Sat",
+                        DayOfWeek.SUNDAY.value to "Sun"
+                    ).forEach { (value, label) ->
+                        SummaryChip(
+                            text = label,
+                            selected = frequencyWeekdaysInput.contains(value),
+                            onClick = {
+                                frequencyWeekdaysInput =
+                                    if (frequencyWeekdaysInput.contains(value)) frequencyWeekdaysInput - value
+                                    else frequencyWeekdaysInput + value
+                            }
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf(
-                                HabitFrequencyType.DAILY.name to "Daily",
-                                HabitFrequencyType.WEEKLY.name to "Weekly",
-                                HabitFrequencyType.EVERY_N_DAYS.name to "Every N days"
-                            ).forEach { (value, label) ->
-                                AssistChip(
-                                    onClick = { frequencyTypeInput = value },
-                                    label = { Text(label) },
-                                    colors = if (frequencyTypeInput == value) {
-                                        AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                                        )
-                                    } else {
-                                        AssistChipDefaults.assistChipColors()
-                                    }
-                                )
-                            }
-                        }
-
-                        if (frequencyTypeInput == HabitFrequencyType.WEEKLY.name) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val weekdayItems = listOf(
-                                    DayOfWeek.MONDAY.value to "Mon",
-                                    DayOfWeek.TUESDAY.value to "Tue",
-                                    DayOfWeek.WEDNESDAY.value to "Wed",
-                                    DayOfWeek.THURSDAY.value to "Thu",
-                                    DayOfWeek.FRIDAY.value to "Fri",
-                                    DayOfWeek.SATURDAY.value to "Sat",
-                                    DayOfWeek.SUNDAY.value to "Sun"
-                                )
-                                weekdayItems.forEach { (dayValue, dayLabel) ->
-                                    val isSelectedDay = frequencyWeekdaysInput.contains(dayValue)
-                                    AssistChip(
-                                        onClick = {
-                                            frequencyWeekdaysInput =
-                                                if (isSelectedDay) frequencyWeekdaysInput - dayValue
-                                                else frequencyWeekdaysInput + dayValue
-                                        },
-                                        label = { Text(dayLabel) },
-                                        colors = if (isSelectedDay) {
-                                            AssistChipDefaults.assistChipColors(
-                                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                                            )
-                                        } else {
-                                            AssistChipDefaults.assistChipColors()
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        if (frequencyTypeInput == HabitFrequencyType.EVERY_N_DAYS.name) {
-                            OutlinedTextField(
-                                value = frequencyIntervalInput,
-                                onValueChange = { value ->
-                                    frequencyIntervalInput = value.filter { it.isDigit() }.take(3)
-                                },
-                                singleLine = true,
-                                label = { Text("Every how many days") },
-                                supportingText = { Text("Example: 3 means every 3 days") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Reminder")
-                            androidx.compose.material3.Switch(
-                                checked = reminderEnabledInput,
-                                onCheckedChange = { reminderEnabledInput = it }
-                            )
-                        }
-
-                        if (reminderEnabledInput) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val parsed = runCatching { LocalTime.parse(reminderTimeInput) }.getOrNull()
-                                            ?: LocalTime.of(9, 0)
-                                        TimePickerDialog(
-                                            context,
-                                            { _, hour, minute ->
-                                                reminderTimeInput = String.format("%02d:%02d", hour, minute)
-                                                reminderTimeError = false
-                                            },
-                                            parsed.hour,
-                                            parsed.minute,
-                                            true
-                                        ).show()
-                                    }
-                            ) {
-                                OutlinedTextField(
-                                    value = reminderTimeInput,
-                                    onValueChange = {},
-                                    singleLine = true,
-                                    enabled = false,
-                                    isError = reminderTimeError,
-                                    label = { Text("Reminder time (HH:MM)") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                        disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        disabledContainerColor = MaterialTheme.colorScheme.surface
-                                    ),
-                                    trailingIcon = {
-                                        Icon(AppIcons.AccessTime, contentDescription = "Select reminder time")
-                                    }
-                                )
-                            }
-
-                            TextButton(
-                                onClick = {
-                                    if (runCatching { LocalTime.parse(reminderTimeInput) }.isSuccess) {
-                                        reminderTimesInput = (reminderTimesInput + reminderTimeInput).distinct().sorted()
-                                        reminderTimeError = false
-                                    } else {
-                                        reminderTimeError = true
-                                    }
-                                }
-                            ) { Text("Add reminder time") }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                reminderTimesInput.forEach { timeValue ->
-                                    AssistChip(
-                                        onClick = {
-                                            reminderTimesInput = reminderTimesInput - timeValue
-                                        },
-                                        label = { Text(timeValue) }
-                                    )
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = reminderMessageInput,
-                                onValueChange = { reminderMessageInput = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Reminder message (optional)") },
-                                minLines = 2,
-                                maxLines = 4
-                            )
-                        }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (habitNameInput.isNotBlank()) {
-                            val ok = viewModel.addHabit(
-                                habitNameInput,
-                                createdDateInput.takeIf { showMoreHabitOptions },
-                                frequencyTypeInput,
-                                frequencyIntervalInput.toIntOrNull(),
-                                frequencyWeekdaysInput,
-                                reminderEnabledInput,
-                                reminderTimesInput.joinToString(","),
-                                reminderMessageInput.takeIf {
-                                    showMoreHabitOptions && reminderEnabledInput
-                                }
-                            )
-                            if (ok) {
-                                if (reminderEnabledInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    val granted = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (!granted) {
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                }
-                                habitNameInput = ""
-                                createdDateInput = ""
-                                showMoreHabitOptions = false
-                                frequencyTypeInput = HabitFrequencyType.DAILY.name
-                                frequencyIntervalInput = "3"
-                                frequencyWeekdaysInput = setOf(DayOfWeek.MONDAY.value)
-                                reminderEnabledInput = false
-                                reminderTimeInput = "09:00"
-                                reminderTimesInput = listOf("09:00")
-                                reminderMessageInput = ""
-                                createdDateError = false
-                                reminderTimeError = false
-                                isAddDialogVisible = false
-                            } else {
-                                createdDateError = false
-                                reminderTimeError = reminderEnabledInput && reminderTimesInput.isEmpty()
-                            }
-                        }
-                    }
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { isAddDialogVisible = false }) {
-                    Text("Cancel")
                 }
             }
-        )
-    }
 
-    if (isSeedDataConfirmVisible) {
-        AlertDialog(
-            onDismissRequest = { isSeedDataConfirmVisible = false },
-            title = { Text("Seed test data") },
-            text = {
-                Text("This will add a large set of demo habits, completions, notes, tasks, goals, birthdays, and reminders for testing.")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        isSeedDataConfirmVisible = false
-                        viewModel.seedTestData()
-                    }
-                ) {
-                    Text("Add data")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { isSeedDataConfirmVisible = false }) {
-                    Text("Cancel")
-                }
+            if (frequencyTypeInput == HabitFrequencyType.EVERY_N_DAYS.name) {
+                OutlinedTextField(
+                    value = frequencyIntervalInput,
+                    onValueChange = { frequencyIntervalInput = it.filter(Char::isDigit).take(3) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Repeat every N days") },
+                    singleLine = true
+                )
             }
-        )
-    }
 
-    if (isEditDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isEditDialogVisible = false },
-            title = { Text("Edit habit") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = editHabitNameInput,
-                        onValueChange = { editHabitNameInput = it },
-                        singleLine = true,
-                        label = { Text("Habit name") }
-                    )
-
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Reminder", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "Frequency",
-                        style = MaterialTheme.typography.labelLarge,
+                        "Optional daily nudge",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            HabitFrequencyType.DAILY.name to "Daily",
-                            HabitFrequencyType.WEEKLY.name to "Weekly",
-                            HabitFrequencyType.EVERY_N_DAYS.name to "Every N days"
-                        ).forEach { (value, label) ->
-                            AssistChip(
-                                onClick = { editFrequencyTypeInput = value },
-                                label = { Text(label) },
-                                colors = if (editFrequencyTypeInput == value) {
-                                    AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                } else {
-                                    AssistChipDefaults.assistChipColors()
-                                }
-                            )
-                        }
-                    }
-
-                    if (editFrequencyTypeInput == HabitFrequencyType.WEEKLY.name) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val weekdayItems = listOf(
-                                DayOfWeek.MONDAY.value to "Mon",
-                                DayOfWeek.TUESDAY.value to "Tue",
-                                DayOfWeek.WEDNESDAY.value to "Wed",
-                                DayOfWeek.THURSDAY.value to "Thu",
-                                DayOfWeek.FRIDAY.value to "Fri",
-                                DayOfWeek.SATURDAY.value to "Sat",
-                                DayOfWeek.SUNDAY.value to "Sun"
-                            )
-                            weekdayItems.forEach { (dayValue, dayLabel) ->
-                                val isSelectedDay = editFrequencyWeekdaysInput.contains(dayValue)
-                                AssistChip(
-                                    onClick = {
-                                        editFrequencyWeekdaysInput =
-                                            if (isSelectedDay) editFrequencyWeekdaysInput - dayValue
-                                            else editFrequencyWeekdaysInput + dayValue
-                                    },
-                                    label = { Text(dayLabel) },
-                                    colors = if (isSelectedDay) {
-                                        AssistChipDefaults.assistChipColors(
-                                            containerColor = MaterialTheme.colorScheme.primaryContainer
-                                        )
-                                    } else {
-                                        AssistChipDefaults.assistChipColors()
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (editFrequencyTypeInput == HabitFrequencyType.EVERY_N_DAYS.name) {
-                        OutlinedTextField(
-                            value = editFrequencyIntervalInput,
-                            onValueChange = { value ->
-                                editFrequencyIntervalInput = value.filter { it.isDigit() }.take(3)
-                            },
-                            singleLine = true,
-                            label = { Text("Every how many days") },
-                            supportingText = { Text("Example: 3 means every 3 days") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Reminder")
-                        androidx.compose.material3.Switch(
-                            checked = editReminderEnabledInput,
-                            onCheckedChange = { editReminderEnabledInput = it }
-                        )
-                    }
-
-                    if (editReminderEnabledInput) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val parsed = runCatching { LocalTime.parse(editReminderTimeInput) }.getOrNull()
-                                        ?: LocalTime.of(9, 0)
-                                    TimePickerDialog(
-                                        context,
-                                        { _, hour, minute ->
-                                            editReminderTimeInput = String.format("%02d:%02d", hour, minute)
-                                            editReminderTimeError = false
-                                        },
-                                        parsed.hour,
-                                        parsed.minute,
-                                        true
-                                    ).show()
-                                }
-                        ) {
-                            OutlinedTextField(
-                                value = editReminderTimeInput,
-                                onValueChange = {},
-                                singleLine = true,
-                                enabled = false,
-                                isError = editReminderTimeError,
-                                label = { Text("Reminder time (HH:MM)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledBorderColor = MaterialTheme.colorScheme.outline,
-                                    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surface
-                                ),
-                                trailingIcon = {
-                                    Icon(AppIcons.AccessTime, contentDescription = "Select reminder time")
-                                }
-                            )
-                        }
-
-                        TextButton(
-                            onClick = {
-                                if (runCatching { LocalTime.parse(editReminderTimeInput) }.isSuccess) {
-                                    editReminderTimesInput = (editReminderTimesInput + editReminderTimeInput).distinct().sorted()
-                                    editReminderTimeError = false
-                                } else {
-                                    editReminderTimeError = true
-                                }
-                            }
-                        ) { Text("Add reminder time") }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            editReminderTimesInput.forEach { timeValue ->
-                                AssistChip(
-                                    onClick = { editReminderTimesInput = editReminderTimesInput - timeValue },
-                                    label = { Text(timeValue) }
-                                )
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = editReminderMessageInput,
-                            onValueChange = { editReminderMessageInput = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Reminder message (optional)") },
-                            minLines = 2,
-                            maxLines = 4
-                        )
-                    }
                 }
-            },
-            confirmButton = {
+                Switch(
+                    checked = reminderEnabledInput,
+                    onCheckedChange = { reminderEnabledInput = it }
+                )
+            }
+
+            if (reminderEnabledInput) {
                 TextButton(
                     onClick = {
-                        val ok = viewModel.updateSelectedHabit(
-                            name = editHabitNameInput,
-                            frequencyType = editFrequencyTypeInput,
-                            frequencyIntervalDays = editFrequencyIntervalInput.toIntOrNull(),
-                            frequencyWeekdays = editFrequencyWeekdaysInput,
-                            reminderEnabled = editReminderEnabledInput,
-                            reminderTime = editReminderTimesInput.joinToString(","),
-                            reminderMessage = editReminderMessageInput
-                        )
-                        if (ok) {
-                            if (editReminderEnabledInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val granted = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (!granted) {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            }
-                            isEditDialogVisible = false
-                        } else {
-                            editReminderTimeError = editReminderEnabledInput && editReminderTimesInput.isEmpty()
+                        openReminderTimePicker { time ->
+                            reminderTimesInput = (reminderTimesInput + time).distinct().sorted()
                         }
                     }
-                ) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { isEditDialogVisible = false }) { Text("Cancel") }
+                ) {
+                    Text("Add reminder time")
+                }
+                reminderTimesInput.forEach { time ->
+                    PillLabel(
+                        text = time,
+                        color = MyAppTheme.extraColors.warning,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (reminderTimeError) {
+                    Text(
+                        text = "Add at least one valid reminder time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                OutlinedTextField(
+                    value = reminderMessageInput,
+                    onValueChange = { reminderMessageInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Reminder message") },
+                    minLines = 2
+                )
             }
-        )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { isHabitEditorVisible = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        val reminderCsv = reminderTimesInput.joinToString(",").takeIf { reminderEnabledInput }
+                        val frequencyInterval = frequencyIntervalInput.toIntOrNull()
+                        val createdValue = createdDateInput.takeIf { editingHabit == null }
+                        val ok = if (editingHabit == null) {
+                            viewModel.addHabit(
+                                habitName = habitNameInput.trim(),
+                                createdDateText = createdValue,
+                                frequencyType = frequencyTypeInput,
+                                frequencyIntervalDays = frequencyInterval,
+                                frequencyWeekdays = frequencyWeekdaysInput,
+                                reminderEnabled = reminderEnabledInput,
+                                reminderTime = reminderCsv,
+                                reminderMessage = reminderMessageInput.takeIf { reminderEnabledInput }
+                            )
+                        } else {
+                            viewModel.updateSelectedHabit(
+                                name = habitNameInput.trim(),
+                                frequencyType = frequencyTypeInput,
+                                frequencyIntervalDays = frequencyInterval,
+                                frequencyWeekdays = frequencyWeekdaysInput,
+                                reminderEnabled = reminderEnabledInput,
+                                reminderTime = reminderCsv,
+                                reminderMessage = reminderMessageInput.takeIf { reminderEnabledInput }
+                            )
+                        }
+                        if (!ok) {
+                            createdDateError = editingHabit == null && createdDateInput.isNotBlank()
+                            reminderTimeError = reminderEnabledInput
+                            return@TextButton
+                        }
+                        if (reminderEnabledInput && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            val granted = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (!granted) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                        isHabitEditorVisible = false
+                    }
+                ) {
+                    Text(if (editingHabit == null) "Create" else "Update")
+                }
+            }
+        }
     }
 
-    if (isDeleteHabitConfirmVisible) {
+    if (isDayNoteSheetVisible) {
+        AppModalSheet(onDismissRequest = { isDayNoteSheetVisible = false }) {
+            SectionHeader(
+                title = "Day note",
+                subtitle = "Capture context for ${selectedNoteDate}"
+            )
+            OutlinedTextField(
+                value = dayNoteInput,
+                onValueChange = { dayNoteInput = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("What mattered today?") },
+                minLines = 6
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = { isDayNoteSheetVisible = false }) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        viewModel.saveDayNote(selectedNoteDate, dayNoteInput)
+                        isDayNoteSheetVisible = false
+                    }
+                ) { Text("Save") }
+            }
+        }
+    }
+
+    if (isQuickActionsVisible) {
+        AppModalSheet(onDismissRequest = { isQuickActionsVisible = false }) {
+            SectionHeader(title = "Quick add", subtitle = "Choose the destination, then keep moving.")
+            SurfaceCard(modifier = Modifier.clickable {
+                resetHabitEditor(null)
+                isHabitEditorVisible = true
+                isQuickActionsVisible = false
+            }) {
+                Text("New habit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Create a new repeatable action.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SurfaceCard(modifier = Modifier.clickable {
+                isQuickActionsVisible = false
+                onOpenTasks()
+            }) {
+                Text("New task", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Jump to Tasks and add the next item.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SurfaceCard(modifier = Modifier.clickable {
+                isQuickActionsVisible = false
+                onOpenBirthdays()
+            }) {
+                Text("New birthday", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Add someone important and schedule reminders.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    if (isDeleteConfirmVisible) {
         AlertDialog(
-            onDismissRequest = { isDeleteHabitConfirmVisible = false },
+            onDismissRequest = { isDeleteConfirmVisible = false },
             title = { Text("Delete habit") },
-            text = { Text("Do you want to delete this habit?") },
+            text = { Text("Delete ${selectedHabit?.name} and its calendar history?") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.deleteSelectedHabit()
-                        isDeleteHabitConfirmVisible = false
+                        isDeleteConfirmVisible = false
                     }
                 ) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { isDeleteHabitConfirmVisible = false }) { Text("Cancel") }
+                TextButton(onClick = { isDeleteConfirmVisible = false }) { Text("Cancel") }
             }
         )
     }
+}
 
-    if (isDayNoteDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isDayNoteDialogVisible = false },
-            title = { Text("Day note: $selectedNoteDate") },
-            text = {
-                OutlinedTextField(
-                    value = dayNoteInput,
-                    onValueChange = { dayNoteInput = it },
-                    label = { Text("Note") },
-                    minLines = 5,
-                    maxLines = Int.MAX_VALUE
+private data class HabitCalendarCell(
+    val date: LocalDate?,
+    val dateKey: String? = null,
+    val isCompleted: Boolean = false,
+    val isScheduled: Boolean = false,
+    val hasBirthday: Boolean = false,
+    val hasNote: Boolean = false,
+    val isFuture: Boolean = false
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HabitMonthCalendar(
+    month: YearMonth,
+    completedDates: Set<String>,
+    scheduledDates: Set<String>,
+    birthdayDates: Set<String>,
+    noteDates: Set<String>,
+    todayDate: LocalDate,
+    onToggleDate: (String) -> Unit,
+    onOpenDayNote: (String) -> Unit,
+    interactive: Boolean
+) {
+    val cells = remember(month, completedDates, scheduledDates, birthdayDates, noteDates, todayDate) {
+        buildHabitCalendarCells(
+            month = month,
+            completedDates = completedDates,
+            scheduledDates = scheduledDates,
+            birthdayDates = birthdayDates,
+            noteDates = noteDates,
+            todayDate = todayDate
+        )
+    }
+    val weekdays = remember { listOf("M", "T", "W", "T", "F", "S", "S") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            weekdays.forEach { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.saveDayNote(selectedNoteDate, dayNoteInput)
-                        isDayNoteDialogVisible = false
-                    }
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { isDayNoteDialogVisible = false }) {
-                    Text("Close")
-                }
             }
-        )
-    }
-
-    if (isGlobalDayDetailsDialogVisible) {
-        AlertDialog(
-            onDismissRequest = { isGlobalDayDetailsDialogVisible = false },
-            title = { Text("Details for ${globalDayDetails?.date.orEmpty()}") },
-            text = {
-                val details = globalDayDetails
-                if (details == null) {
-                    Text("No details available.")
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Birthdays",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (details.birthdayNames.isEmpty()) {
-                            Text(
-                                text = "No birthdays",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            details.birthdayNames.forEach { birthdayName ->
-                                Text(text = "🎂 $birthdayName")
-                            }
-                        }
-
-                        Text(
-                            text = "Habits",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (details.habits.isEmpty()) {
-                            Text(
-                                text = "No habits scheduled for this date",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            details.habits.forEach { habitDetail ->
-                                Text(
-                                    text = if (habitDetail.isDone) {
-                                        "✓ ${habitDetail.habitName}"
-                                    } else {
-                                        "✕ ${habitDetail.habitName}"
-                                    }
-                                )
-                                Text(
-                                    text = "Note: ${habitDetail.note?.takeIf { it.isNotBlank() } ?: "No note"}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+        }
+        cells.chunked(7).forEach { week ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                week.forEach { cell ->
+                    val backgroundColor = when {
+                        cell.date == null -> Color.Transparent
+                        cell.isCompleted -> MyAppTheme.extraColors.success.copy(alpha = 0.9f)
+                        cell.isScheduled -> MaterialTheme.colorScheme.surfaceVariant
+                        else -> MaterialTheme.colorScheme.background.copy(alpha = 0.55f)
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { isGlobalDayDetailsDialogVisible = false }) {
-                    Text("Close")
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun HomeLoadingState() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "Loading habits...",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        HomeCalendarPlaceholder()
-        HomeCalendarPlaceholder()
-    }
-}
-
-@Composable
-private fun HomeCalendarPlaceholder() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            repeat(6) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp)
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        repeat(7) {
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(vertical = 2.dp),
-                                tonalElevation = 1.dp,
-                                shape = MaterialTheme.shapes.medium
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(backgroundColor)
+                            .then(
+                                if (cell.dateKey != null) {
+                                    Modifier.combinedClickable(
+                                        enabled = interactive && !cell.isFuture,
+                                        onClick = { onToggleDate(cell.dateKey) },
+                                        onLongClick = {
+                                            if (cell.isScheduled) onOpenDayNote(cell.dateKey)
+                                        }
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .padding(8.dp)
+                    ) {
+                        if (cell.date != null) {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = cell.date.dayOfMonth.toString(),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (cell.isScheduled || cell.isCompleted) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                    if (cell.hasBirthday) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(MyAppTheme.extraColors.accent)
+                                                .padding(4.dp)
+                                        )
+                                    }
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (cell.hasNote) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(MyAppTheme.extraColors.warning)
+                                                .padding(3.dp)
+                                        )
+                                    }
+                                    if (cell.isCompleted) {
+                                        Text(
+                                            text = "Done",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    } else if (cell.isFuture) {
+                                        Text(
+                                            text = "Soon",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1052,4 +871,36 @@ private fun HomeCalendarPlaceholder() {
             }
         }
     }
+}
+
+private fun buildHabitCalendarCells(
+    month: YearMonth,
+    completedDates: Set<String>,
+    scheduledDates: Set<String>,
+    birthdayDates: Set<String>,
+    noteDates: Set<String>,
+    todayDate: LocalDate
+): List<HabitCalendarCell> {
+    val firstDay = month.atDay(1)
+    val paddingStart = firstDay.dayOfWeek.value - 1
+    val totalDays = month.lengthOfMonth()
+    val cells = mutableListOf<HabitCalendarCell>()
+    repeat(paddingStart) { cells += HabitCalendarCell(date = null) }
+    repeat(totalDays) { offset ->
+        val date = month.atDay(offset + 1)
+        val key = date.toString()
+        cells += HabitCalendarCell(
+            date = date,
+            dateKey = key,
+            isCompleted = completedDates.contains(key),
+            isScheduled = scheduledDates.contains(key),
+            hasBirthday = birthdayDates.contains(key),
+            hasNote = noteDates.contains(key),
+            isFuture = date.isAfter(todayDate)
+        )
+    }
+    while (cells.size % 7 != 0) {
+        cells += HabitCalendarCell(date = null)
+    }
+    return cells
 }

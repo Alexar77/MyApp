@@ -19,7 +19,8 @@ data class NotificationPreviewItem(
     val uniqueKey: String,
     val title: String,
     val message: String,
-    val triggerAtMillis: Long
+    val triggerAtMillis: Long,
+    val sourceLabel: String
 )
 
 data class NotificationsUiState(
@@ -44,7 +45,8 @@ class NotificationsViewModel @Inject constructor(
                         uniqueKey = item.uniqueKey,
                         title = item.title,
                         message = item.message,
-                        triggerAtMillis = nextTrigger
+                        triggerAtMillis = nextTrigger,
+                        sourceLabel = sourceLabelFor(item.uniqueKey)
                     )
                 }.sortedBy { it.triggerAtMillis }
 
@@ -73,5 +75,13 @@ class NotificationsViewModel @Inject constructor(
         var target = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
         if (!target.isAfter(now)) target = target.plusDays(1)
         return target.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+
+    private fun sourceLabelFor(uniqueKey: String): String = when {
+        uniqueKey.startsWith("habit:") -> "Habit"
+        uniqueKey.startsWith("task:") -> "Task"
+        uniqueKey.startsWith("birthday:") -> "Birthday"
+        uniqueKey.startsWith("test:") -> "Test"
+        else -> "Reminder"
     }
 }
